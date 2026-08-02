@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+
+{% block title %}Inicio - {{ nombre_tienda }}{% endblock %}
+
+{% block content %}
+<div class="page-view">
+    <!-- Welcome header (estilo Stitch: Panel General) -->
+    <div class="dash-welcome">
+        <div>
+            <h1 class="dash-title">Panel General</h1>
+            <p class="dash-subtitle">Gestión operativa centralizada y estado del sistema.</p>
+        </div>
+        <div class="dash-online">
+            <span class="dash-online-dot"></span>
+            <span>Sistema en línea</span>
+        </div>
+    </div>
+
+    <!-- Contenido scrolleable -->
+    <div class="page-body-scroll">
+        <div class="dash-grid">
+            <!-- Columna izquierda (operación) -->
+            <div class="dash-col-left">
+                <!-- Atención Hoy -->
+                <div class="stitch-card">
+                    <div class="stitch-card-header">
+                        <h3><span>⚠️</span> Atención Hoy</h3>
+                        <span class="stitch-badge" id="attention-count-badge">0 Alertas</span>
+                    </div>
+                    <div id="attention-list" class="stitch-alerts">
+                        <div class="stitch-alert" style="cursor:default;">
+                            <div class="stitch-alert-left"><span class="stitch-alert-dot dot-green"></span><span class="stitch-alert-text">Analizando cartera...</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Actividad Reciente -->
+                <div class="stitch-card">
+                    <div class="stitch-card-header">
+                        <h3><span>🕒</span> Actividad Reciente</h3>
+                    </div>
+                    <div id="recent-activity" class="stitch-timeline">
+                        <div class="stitch-timeline-item">
+                            <div class="stitch-timeline-icon">⏳</div>
+                            <div class="stitch-timeline-body">
+                                <div class="stitch-timeline-title">Cargando actividad...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Columna derecha (estado y acciones) -->
+            <div class="dash-col-right">
+                <!-- Estado del Negocio -->
+                <div class="stitch-card">
+                    <div class="stitch-card-header">
+                        <h3><span>📈</span> Estado del Negocio</h3>
+                    </div>
+                    <div class="business-grid">
+                        <div class="business-stat">
+                            <div class="business-stat-label">Clientes</div>
+                            <div class="business-stat-value" id="stat-clientes">0</div>
+                        </div>
+                        <div class="business-stat">
+                            <div class="business-stat-label">Deuda Activa</div>
+                            <div class="business-stat-value" id="stat-deuda">$0</div>
+                        </div>
+                        <div class="business-stat">
+                            <div class="business-stat-label">Ventas a crédito</div>
+                            <div class="business-stat-value" id="stat-prestado">$0</div>
+                        </div>
+                        <div class="business-stat">
+                            <div class="business-stat-label">Recuperado</div>
+                            <div class="business-stat-value positive" id="stat-recuperado">$0</div>
+                        </div>
+                        <div class="business-stat">
+                            <div class="business-stat-label">Abonos Hoy</div>
+                            <div class="business-stat-value positive" id="stat-abonos-hoy">$0</div>
+                        </div>
+                        <div class="business-stat">
+                            <div class="business-stat-label">Ventas a crédito hoy</div>
+                            <div class="business-stat-value" id="stat-prestamos-hoy">$0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Accesos Rápidos -->
+                <div class="stitch-card">
+                    <div class="stitch-card-header">
+                        <h3><span>⚡</span> Accesos Rápidos</h3>
+                    </div>
+                    <div class="quick-grid">
+                        <a href="/nuevo-prestamo" class="quick-link" data-spa>
+                            <span class="quick-icon">🛍️</span><span class="quick-label">Venta</span>
+                        </a>
+                        <a href="/nuevo-abono" class="quick-link" data-spa>
+                            <span class="quick-icon">➕</span><span class="quick-label">Abono</span>
+                        </a>
+                        <a href="/nueva-factura" class="quick-link" data-spa>
+                            <span class="quick-icon">📄</span><span class="quick-label">Factura</span>
+                        </a>
+                        <a href="/nuevo-pago-proveedor" class="quick-link" data-spa>
+                            <span class="quick-icon">💳</span><span class="quick-label">Pago Prov.</span>
+                        </a>
+                        <a href="/inventario" class="quick-link" data-spa>
+                            <span class="quick-icon">📦</span><span class="quick-label">Inventario</span>
+                        </a>
+                        <a href="/importar" class="quick-link" data-spa>
+                            <span class="quick-icon">📥</span><span class="quick-label">Importar</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resumen Financiero (bar fija al fondo) -->
+    <div class="financial-bar">
+        <div class="financial-bar-inner">
+            <div class="financial-bar-title">
+                <span>💰</span>
+                <span>Resumen Financiero <span class="financial-bar-sub">· hoy</span></span>
+            </div>
+            <div class="financial-bar-items">
+                <div class="financial-item">
+                    <span class="financial-item-label">Entradas</span>
+                    <span class="financial-item-value positive" id="fin-entradas">$0</span>
+                </div>
+                <div class="financial-item">
+                    <span class="financial-item-label">Salidas</span>
+                    <span class="financial-item-value negative" id="fin-salidas">$0</span>
+                </div>
+                <div class="financial-item">
+                    <span class="financial-item-label">Neto</span>
+                    <span class="financial-item-value" id="fin-neto">$0</span>
+                </div>
+                <div class="financial-item">
+                    <span class="financial-item-label">Clientes</span>
+                    <span class="financial-item-value" id="fin-clientes">0</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function() {
+    function fmt(val) {
+        if (val === null || val === undefined || isNaN(val)) return '$0';
+        return '$' + Number(val).toLocaleString('es-CO', { maximumFractionDigits: 0 });
+    }
+
+    function setText(id, txt) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = txt;
+    }
+
+    function setStat(id, txt, cls) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = txt;
+        if (cls) { el.className = 'business-stat-value ' + cls; }
+    }
+
+    function alertRow(tone, text, href) {
+        return `<a href="${href}" class="stitch-alert alert-${tone}">
+            <div class="stitch-alert-left"><span class="stitch-alert-dot dot-${tone}"></span><span class="stitch-alert-text">${text}</span></div>
+            <span class="stitch-alert-arrow">›</span>
+        </a>`;
+    }
+
+    async function loadActivity() {
+        const container = document.getElementById('recent-activity');
+        if (!container) return;
+        try {
+            const res = await API.getMovimientosHoy();
+            const movs = (res && res.data) || [];
+            if (movs.length === 0) {
+                container.innerHTML = '<div style="text-align:center;padding:1.5rem 0;color:var(--text-muted);font-size:0.85rem;">📝 Sin movimientos hoy.</div>';
+                return;
+            }
+            container.innerHTML = movs.slice(0, 8).map(m => {
+                let disp;
+                try { disp = getOperationDisplay(m); } catch (e) { disp = { icon: '💠', label: 'Movimiento', sign: '+', amountClass: 'negative' }; }
+                return `<div class="stitch-timeline-item">
+                    <div class="stitch-timeline-icon">${disp.icon}</div>
+                    <div class="stitch-timeline-body">
+                        <div class="stitch-timeline-title">${escapeHtml(m.cliente_nombre || disp.label)}</div>
+                        <div class="stitch-timeline-meta">${escapeHtml(m.descripcion || disp.label)}${m.hora ? ' · ' + escapeHtml(m.hora) : ''}</div>
+                    </div>
+                    <div class="stitch-timeline-amount ${disp.amountClass}">${disp.sign}${fmt(m.monto)}</div>
+                </div>`;
+            }).join('');
+        } catch (e) {
+            container.innerHTML = '<div style="text-align:center;padding:1.5rem 0;color:var(--text-danger);font-size:0.85rem;">Error al cargar actividad.</div>';
+        }
+    }
+
+    (async function() {
+        try {
+            const [dashRes, flujoRes, invRes] = await Promise.all([
+                API.getDashboard(),
+                API.getFlujoCaja(),
+                API.getDashboardInventario()
+            ]);
+            const d = (dashRes && dashRes.data) || {};
+            const f = (flujoRes && flujoRes.data) || {};
+
+            // Estado del Negocio
+            setStat('stat-clientes', (d.clientes_activos || 0));
+            setStat('stat-deuda', fmt(d.deuda_activa), (d.deuda_activa > 0 ? 'negative' : 'positive'));
+            setStat('stat-prestado', fmt(d.total_prestado));
+            setStat('stat-recuperado', fmt(d.total_abonado), 'positive');
+            setStat('stat-abonos-hoy', fmt(d.abonos_hoy), 'positive');
+            setStat('stat-prestamos-hoy', fmt(d.prestamos_hoy), 'negative');
+
+            // Resumen Financiero
+            const entradas = (Number(f.ventas_total) || 0) + (Number(f.abonos_total) || 0);
+            const salidas = (Number(f.pagos_proveedores_total) || 0) + (Number(f.gastos_total) || 0);
+            const neto = Number(f.efectivo_neto) || 0;
+            setText('fin-entradas', fmt(entradas));
+            setText('fin-salidas', fmt(salidas));
+            const netoEl = document.getElementById('fin-neto');
+            if (netoEl) { netoEl.textContent = fmt(neto); netoEl.className = 'financial-item-value ' + (neto >= 0 ? 'positive' : 'negative'); }
+            setText('fin-clientes', d.clientes_activos || 0);
+
+            // Atención Hoy
+            const alerts = [];
+            const sinAbonos = d.clientes_sin_abonos || [];
+            if (sinAbonos.length > 0) {
+                alerts.push(alertRow('amber', sinAbonos.length + ' cliente' + (sinAbonos.length === 1 ? '' : 's') + ' con abono vencido', '/recordatorios'));
+            }
+            const deuda90 = (d.cola_cobro || []).filter(c => (c.dias_sin_abonar == null ? 999 : c.dias_sin_abonar) >= 90);
+            if (deuda90.length > 0) {
+                alerts.push(alertRow('red', deuda90.length + ' cliente' + (deuda90.length === 1 ? '' : 's') + ' con deuda mayor a 90 días', '/clientes'));
+            }
+            const stockBajo = (invRes && invRes.data && invRes.data.stock_bajo) || [];
+            if (stockBajo.length > 0) {
+                alerts.push(alertRow('amber', stockBajo.length + ' producto' + (stockBajo.length === 1 ? '' : 's') + ' con stock bajo', '/inventario'));
+            }
+
+            const badge = document.getElementById('attention-count-badge');
+            if (badge) badge.textContent = alerts.length + ' Alerta' + (alerts.length === 1 ? '' : 's');
+
+            const atList = document.getElementById('attention-list');
+            if (atList) {
+                if (alerts.length === 0) {
+                    atList.innerHTML = `<div class="stitch-alert" style="cursor:default;">
+                        <div class="stitch-alert-left"><span class="stitch-alert-dot dot-green"></span><span class="stitch-alert-text">Todo al día, sin alertas pendientes</span></div>
+                        <span class="stitch-alert-arrow">✅</span>
+                    </div>`;
+                } else {
+                    atList.innerHTML = alerts.join('');
+                }
+            }
+
+            const notif = document.getElementById('badge-atencion');
+            if (notif) notif.style.display = alerts.length ? 'block' : 'none';
+        } catch (e) {
+            console.warn('Error cargando dashboard:', e);
+        }
+
+        loadActivity();
+    })();
+})();
+</script>
+{% endblock %}

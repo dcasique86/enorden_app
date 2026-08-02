@@ -1,0 +1,69 @@
+- generic [ref=f1e2]:
+  - complementary [ref=f1e3]:
+    - generic [ref=f1e4]: 🏪
+    - navigation [ref=f1e6]:
+      - link "📊" [ref=f1e7] [cursor=pointer]:
+        - /url: /
+      - link "👥" [ref=f1e9] [cursor=pointer]:
+        - /url: /clientes
+      - link "📦" [ref=f1e11] [cursor=pointer]:
+        - /url: /inventario
+      - link "🏭" [ref=f1e13] [cursor=pointer]:
+        - /url: /proveedores
+      - link "💸" [ref=f1e15] [cursor=pointer]:
+        - /url: /gastos
+      - link "📱" [ref=f1e17] [cursor=pointer]:
+        - /url: /recordatorios
+    - generic [ref=f1e19]:
+      - link "➕" [ref=f1e20] [cursor=pointer]:
+        - /url: /nuevo-prestamo
+      - link "⚙️" [ref=f1e22] [cursor=pointer]:
+        - /url: /configuracion
+  - generic [ref=f1e24]:
+    - banner [ref=f1e25]:
+      - generic [ref=f1e26]:
+        - generic [ref=f1e27]:
+          - button "Menú de Aplicaciones" [ref=f1e28] [cursor=pointer]
+          - generic [ref=f1e39]: Inicio
+        - generic [ref=f1e41]:
+          - generic: 🤖
+          - textbox "Pregúntale al asistente o busca clientes, productos, facturas..." [ref=f1e42]
+        - generic [ref=f1e43]:
+          - generic [ref=f1e44]: EO
+          - button "☀️" [ref=f1e46] [cursor=pointer]
+    - main [ref=f1e48]:
+      - generic [ref=f1e52]:
+        - heading "📋 Nueva compra" [level=2] [ref=f1e54]:
+          - generic [ref=f1e55]: 📋
+          - text: Nueva compra
+        - generic [ref=f1e56]:
+          - generic [ref=f1e57] [cursor=pointer]:
+            - generic [ref=f1e58]: 🛍️
+            - generic [ref=f1e59]: Compra
+            - generic [ref=f1e60]: El cliente adquiere la mercancía inmediatamente.
+          - generic [ref=f1e61] [cursor=pointer]:
+            - generic [ref=f1e62]: 📦
+            - generic [ref=f1e63]: Préstamo de mercancía
+            - generic [ref=f1e64]: La mercancía se entrega durante un máximo de 48 horas.
+        - generic [ref=f1e66]:
+          - generic [ref=f1e67]:
+            - generic [ref=f1e68]: Cliente
+            - generic [ref=f1e69]:
+              - generic [ref=f1e70]: 🔍
+              - textbox "Buscar cliente..." [ref=f1e71]
+          - generic [ref=f1e72]:
+            - generic [ref=f1e73]: Monto *
+            - textbox "0" [ref=f1e74]
+          - generic [ref=f1e75]:
+            - generic [ref=f1e76]: Descripción / Artículos
+            - 'textbox "Escribe cada artículo en una línea, ej: 2 camisetas Nike 1 tenis Adidas 3 gorras" [ref=f1e77]':
+              - /placeholder: "Escribe cada artículo en una línea, ej:\n2 camisetas Nike\n1 tenis Adidas\n3 gorras"
+          - generic [ref=f1e78]:
+            - paragraph [ref=f1e79]:
+              - text: "📅 Fecha:"
+              - strong [ref=f1e80]: sábado, 1 de agosto de 2026
+            - paragraph [ref=f1e81]: ℹ️ La operación se sumará a la deuda del cliente.
+          - generic [ref=f1e82]:
+            - link "Cancelar" [ref=f1e83] [cursor=pointer]:
+              - /url: /
+            - button "🛍️ Registrar Compra" [ref=f1e84] [cursor=pointer]

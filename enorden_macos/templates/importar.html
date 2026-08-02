@@ -1,0 +1,426 @@
+{% extends "base.html" %}
+
+{% block title %}Importar Datos - {{ nombre_tienda }}{% endblock %}
+
+{% block content %}
+<div class="section">
+    <div class="section-header">
+        <h2 class="section-title">
+            <span class="section-title-icon">📥</span>
+            Importar Datos desde Excel
+        </h2>
+    </div>
+
+    <!-- Paso 1: Subir archivo -->
+    <div id="paso1" class="fade-in">
+        <h4 style="margin-bottom: 1rem;">Paso 1: Selecciona tu archivo Excel</h4>
+        
+        <div id="dropzone" style="
+            border: 2px dashed var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 3rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 1.5rem;
+            background: var(--bg-card);
+        " onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border-color)'">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">📁</div>
+            <p style="font-size: 1.125rem; color: var(--text-primary); margin-bottom: 0.5rem;">
+                Arrastra tu archivo aquí o haz clic para seleccionar
+            </p>
+            <p style="font-size: 0.875rem; color: var(--text-secondary);">
+                Archivos soportados: .xlsx, .xls
+            </p>
+            <input type="file" id="file-input" accept=".xlsx,.xls" style="display: none;">
+        </div>
+
+        <div id="file-info" style="display: none; background: var(--bg-input); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.5rem; border: 1px solid var(--border-color);">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <span style="font-size: 2rem;">📊</span>
+                <div style="flex: 1;">
+                    <div id="file-name" style="font-weight: 600; color: var(--text-primary);"></div>
+                    <div id="file-size" class="text-secondary" style="font-size: 0.875rem;"></div>
+                </div>
+                <button class="btn btn-ghost" onclick="limpiarArchivo()">✕</button>
+            </div>
+        </div>
+
+        <button id="btn-preview" class="btn btn-primary btn-lg btn-block" disabled onclick="previsualizar()">
+            🔍 Analizar Archivo
+        </button>
+    </div>
+
+    <!-- Paso 2: Configurar importación -->
+    <div id="paso2" style="display: none;" class="fade-in">
+        <h4 style="margin-bottom: 1rem; color: var(--text-primary);">Paso 2: Configura las columnas</h4>
+        
+        <div style="background: var(--bg-input); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.5rem; border: 1px solid var(--border-color);">
+            <p style="color: var(--text-secondary); font-size: 0.875rem;">
+                📊 <strong id="preview-filas" style="color: var(--primary);">0</strong> registros encontrados
+            </p>
+        </div>
+
+        <!-- Preview de datos -->
+        <div style="margin-bottom: 1.5rem;">
+            <h5 style="margin-bottom: 0.75rem; color: var(--text-secondary);">Vista previa de tus datos:</h5>
+            <div class="table-container">
+                <table class="data-table" id="preview-table">
+                    <!-- Se llena dinámicamente -->
+                </table>
+            </div>
+        </div>
+
+        <!-- Mapeo de columnas -->
+        <div style="background: var(--bg-input); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1.5rem; border: 1px solid var(--border-color);">
+            <h5 style="margin-bottom: 1rem; color: var(--text-primary);">Mapea tus columnas:</h5>
+            
+            <div class="form-group">
+                <label class="form-label">Columna de NOMBRE del cliente *</label>
+                <select id="col-nombre" class="form-input">
+                    <option value="">-- Selecciona --</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Columna de TELÉFONO (opcional)</label>
+                <select id="col-telefono" class="form-input">
+                    <option value="">-- No importar --</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Columna de DEUDA actual (opcional)</label>
+                <select id="col-deuda" class="form-input">
+                    <option value="">-- No importar --</option>
+                </select>
+                <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem;">
+                    Si no tienes desglose, usa esta columna para importar el saldo actual
+                </p>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Columna de total PRESTADO (opcional)</label>
+                <select id="col-prestamos" class="form-input">
+                    <option value="">-- No importar --</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Columna de total ABONADO (opcional)</label>
+                <select id="col-abonos" class="form-input">
+                    <option value="">-- No importar --</option>
+                </select>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem;">
+                <input type="checkbox" id="crear-backup" checked style="width: 18px; height: 18px;">
+                <label for="crear-backup" style="font-size: 0.9375rem; color: var(--text-primary);">Crear backup antes de importar (recomendado)</label>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 1rem;">
+            <button class="btn btn-secondary btn-lg" style="flex: 1;" onclick="volverPaso1()">
+                ← Atrás
+            </button>
+            <button id="btn-importar" class="btn btn-success btn-lg" style="flex: 1;" onclick="importar()">
+                📥 Importar Datos
+            </button>
+        </div>
+    </div>
+
+    <!-- Paso 3: Resultado -->
+    <div id="paso3" style="display: none;" class="fade-in">
+        <div style="text-align: center; padding: 2rem;">
+            <div style="font-size: 4rem; margin-bottom: 1rem;">✅</div>
+            <h3 style="margin-bottom: 0.5rem; color: var(--text-primary);">¡Importación Completada!</h3>
+            <p class="text-secondary" style="margin-bottom: 1.5rem;">Tus datos han sido importados exitosamente</p>
+            
+            <div style="background: var(--bg-input); border-radius: var(--radius-md); padding: 1.5rem; display: inline-block; margin-bottom: 2rem; border: 1px solid var(--border-color);">
+                <div style="display: flex; gap: 2rem; justify-content: center;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 2rem; font-weight: 700; color: var(--primary);" id="result-clientes">0</div>
+                        <div class="text-secondary">Clientes importados</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 2rem; font-weight: 700; color: var(--success);" id="result-movimientos">0</div>
+                        <div class="text-secondary">Movimientos creados</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 1rem; justify-content: center;">
+                <a href="/" class="btn btn-primary btn-lg">Ver Dashboard</a>
+                <a href="/clientes" class="btn btn-secondary btn-lg">Ver Clientes</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Instrucciones -->
+<div class="section" style="margin-top: 1.5rem;">
+    <div class="section-header">
+        <h3 class="section-title">
+            <span class="section-title-icon">💡</span>
+            Instrucciones
+        </h3>
+    </div>
+    
+    <div style="display: grid; gap: 1rem;">
+        <div style="display: flex; gap: 1rem; align-items: flex-start;">
+            <span style="font-size: 1.5rem;">1️⃣</span>
+            <div>
+                <strong style="color: var(--text-primary);">Sube tu archivo Excel</strong>
+                <p class="text-secondary" style="font-size: 0.875rem;">Arrastra o selecciona el archivo con tus datos de clientes</p>
+            </div>
+        </div>
+        <div style="display: flex; gap: 1rem; align-items: flex-start;">
+            <span style="font-size: 1.5rem;">2️⃣</span>
+            <div>
+                <strong style="color: var(--text-primary);">Configura las columnas</strong>
+                <p class="text-secondary" style="font-size: 0.875rem;">Indica qué columna corresponde a cada dato (nombre, teléfono, deuda, etc.)</p>
+            </div>
+        </div>
+        <div style="display: flex; gap: 1rem; align-items: flex-start;">
+            <span style="font-size: 1.5rem;">3️⃣</span>
+            <div>
+                <strong style="color: var(--text-primary);">Importa los datos</strong>
+                <p class="text-secondary" style="font-size: 0.875rem;">Los clientes y sus deudas se agregarán a tu sistema</p>
+            </div>
+        </div>
+    </div>
+
+    <div style="background: rgba(14, 165, 233, 0.1); border: 1px solid var(--primary); border-radius: var(--radius-md); padding: 1rem; margin-top: 1.5rem;">
+        <p style="font-size: 0.875rem; color: var(--text-primary);">
+            💡 <strong>Tip:</strong> Si solo tienes el nombre y la deuda actual, usa las columnas "Nombre" y "Deuda". El sistema creará automáticamente el registro con ese saldo.
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Estado global
+    let selectedFile = null;
+    let previewData = null;
+
+    // Configurar dropzone
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('file-input');
+
+    if (dropzone) {
+        dropzone.addEventListener('click', () => fileInput.click());
+
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.style.borderColor = 'var(--primary)';
+            dropzone.style.background = 'var(--bg-hover)';
+        });
+
+        dropzone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropzone.style.borderColor = 'var(--border-color)';
+            dropzone.style.background = 'var(--bg-card)';
+        });
+
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.style.borderColor = 'var(--border-color)';
+            dropzone.style.background = 'var(--bg-card)';
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+    }
+
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+    }
+
+    function handleFile(file) {
+        if (!file.name.match(/\.(xlsx|xls)$/i)) {
+            Toast.error('El archivo debe ser Excel (.xlsx o .xls)');
+            return;
+        }
+
+        selectedFile = file;
+        
+        // Mostrar info del archivo
+        document.getElementById('dropzone').style.display = 'none';
+        document.getElementById('file-info').style.display = 'block';
+        document.getElementById('file-name').textContent = file.name;
+        document.getElementById('file-size').textContent = formatFileSize(file.size);
+        document.getElementById('btn-preview').disabled = false;
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function limpiarArchivo() {
+        selectedFile = null;
+        previewData = null;
+        document.getElementById('dropzone').style.display = 'block';
+        document.getElementById('file-info').style.display = 'none';
+        document.getElementById('btn-preview').disabled = true;
+        fileInput.value = '';
+    }
+
+    async function previsualizar() {
+        if (!selectedFile) return;
+
+        const btn = document.getElementById('btn-preview');
+        btn.disabled = true;
+        btn.textContent = '⏳ Analizando...';
+
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+
+        try {
+            const response = await fetch('/api/importar/preview', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.detail || 'Error al analizar archivo');
+            }
+
+            previewData = result.data;
+            mostrarPaso2();
+
+        } catch (error) {
+            Toast.error(error.message);
+            btn.disabled = false;
+            btn.textContent = '🔍 Analizar Archivo';
+        }
+    }
+
+    function mostrarPaso2() {
+        document.getElementById('paso1').style.display = 'none';
+        document.getElementById('paso2').style.display = 'block';
+
+        // Mostrar cantidad de filas
+        document.getElementById('preview-filas').textContent = previewData.total_filas;
+
+        // Llenar tabla de preview
+        const table = document.getElementById('preview-table');
+        let html = '<thead><tr>';
+        previewData.columnas.forEach(col => {
+            html += `<th>${escapeHtml(col)}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+
+        previewData.preview.forEach(fila => {
+            html += '<tr>';
+            previewData.columnas.forEach(col => {
+                const valor = fila[col] !== undefined && fila[col] !== null ? fila[col] : '';
+                html += `<td>${escapeHtml(String(valor))}</td>`;
+            });
+            html += '</tr>';
+        });
+        html += '</tbody>';
+        table.innerHTML = html;
+
+        // Llenar selects con las columnas
+        const selects = ['col-nombre', 'col-telefono', 'col-deuda', 'col-prestamos', 'col-abonos'];
+        selects.forEach(selectId => {
+            const select = document.getElementById(selectId);
+            const currentValue = select.value;
+            select.innerHTML = '<option value="">-- ' + (selectId === 'col-nombre' ? 'Selecciona' : 'No importar') + ' --</option>';
+            
+            previewData.columnas.forEach(col => {
+                const option = document.createElement('option');
+                option.value = col;
+                option.textContent = col;
+                select.appendChild(option);
+
+                // Auto-detectar columnas comunes
+                const colLower = col.toLowerCase();
+                if (selectId === 'col-nombre' && (colLower.includes('nombre') || colLower.includes('cliente'))) {
+                    select.value = col;
+                }
+                if (selectId === 'col-telefono' && (colLower.includes('tel') || colLower.includes('cel') || colLower.includes('fono'))) {
+                    select.value = col;
+                }
+                if (selectId === 'col-deuda' && (colLower.includes('deuda') || colLower.includes('saldo') || colLower.includes('balance'))) {
+                    select.value = col;
+                }
+                if (selectId === 'col-prestamos' && (colLower.includes('prest') || colLower.includes('total'))) {
+                    select.value = col;
+                }
+                if (selectId === 'col-abonos' && (colLower.includes('abono') || colLower.includes('pago'))) {
+                    select.value = col;
+                }
+            });
+        });
+    }
+
+    function volverPaso1() {
+        document.getElementById('paso1').style.display = 'block';
+        document.getElementById('paso2').style.display = 'none';
+    }
+
+    async function importar() {
+        const colNombre = document.getElementById('col-nombre').value;
+        if (!colNombre) {
+            Toast.error('Debes seleccionar la columna de nombre');
+            return;
+        }
+
+        const config = {
+            col_nombre: colNombre,
+            col_telefono: document.getElementById('col-telefono').value,
+            col_deuda: document.getElementById('col-deuda').value,
+            col_prestamos: document.getElementById('col-prestamos').value,
+            col_abonos: document.getElementById('col-abonos').value,
+            crear_backup: document.getElementById('crear-backup').checked
+        };
+
+        const btn = document.getElementById('btn-importar');
+        btn.disabled = true;
+        btn.textContent = '⏳ Importando...';
+
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('config', JSON.stringify(config));
+
+        try {
+            const response = await fetch('/api/importar', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.detail || 'Error al importar');
+            }
+
+            // Mostrar resultado
+            document.getElementById('result-clientes').textContent = result.data.clientes_importados;
+            document.getElementById('result-movimientos').textContent = result.data.movimientos_creados;
+            
+            document.getElementById('paso2').style.display = 'none';
+            document.getElementById('paso3').style.display = 'block';
+
+            Toast.success('¡Importación completada!');
+
+        } catch (error) {
+            Toast.error(error.message);
+            btn.disabled = false;
+            btn.textContent = '📥 Importar Datos';
+        }
+    }
+</script>
+{% endblock %}

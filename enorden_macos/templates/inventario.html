@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Inventario - {{ nombre_tienda }}{% endblock %}
+
+{% block content %}
+<div class="section">
+    <div class="section-header">
+        <h2 class="section-title">
+            <span class="section-title-icon">INV</span>
+            Inventario
+        </h2>
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <a href="/nueva-venta" class="btn btn-success btn-sm">Registrar Venta</a>
+            <button class="btn btn-primary btn-sm" onclick="Modal.open('modal-nuevo-producto')">+ Nuevo Producto</button>
+        </div>
+    </div>
+
+    <div class="stats-grid" id="inventario-stats"></div>
+
+    <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; overflow-x: auto;" id="filtros-inventario">
+        <button class="btn btn-sm btn-primary" onclick="Inventario.setFiltro('todos')" id="filter-todos">Todos</button>
+        <button class="btn btn-sm btn-secondary" onclick="Inventario.setFiltro('bajo_stock')" id="filter-bajo">⚠️ Bajo Stock</button>
+        <button class="btn btn-sm btn-secondary" onclick="Inventario.setFiltro('sin_stock')" id="filter-sin">🚫 Sin existencias</button>
+    </div>
+
+    <div style="margin-bottom: 1rem;">
+        <h4 style="margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--text-muted);">Categorías</h4>
+        <div id="categorias-list" style="display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.5rem;">
+            <!-- Categorias se llenan dinamicaente -->
+        </div>
+    </div>
+
+    <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="search-productos" class="search-input" placeholder="Buscar producto por nombre, categoria o referencia...">
+    </div>
+
+    <div id="productos-list-container" style="max-height: 60vh; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 0.5rem; background: var(--bg-card);">
+        <div id="productos-list">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p style="margin-top: 1rem;">Cargando inventario...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="section">
+    <div class="section-header">
+        <h3 class="section-title">
+            <span class="section-title-icon">$</span>
+            Ventas recientes
+        </h3>
+    </div>
+    <div id="ventas-list"></div>
+</div>
+
+<div id="modal-nuevo-producto" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Nuevo Producto</h3>
+            <button class="modal-close" onclick="Modal.close('modal-nuevo-producto')">x</button>
+        </div>
+        <form id="form-producto">
+            <div class="form-group">
+                <label class="form-label">Nombre *</label>
+                <input type="text" name="nombre" class="form-input" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Categoria</label>
+                <input type="text" name="categoria" class="form-input">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Referencia / Modelo</label>
+                <input type="text" name="referencia" class="form-input">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Precio compra</label>
+                <input type="text" name="precio_compra" inputmode="numeric" class="form-input" value="0">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Precio venta</label>
+                <input type="text" name="precio_venta" inputmode="numeric" class="form-input" value="0">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Stock inicial</label>
+                <input type="number" name="stock" class="form-input" min="0" step="1" value="0">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Stock minimo</label>
+                <input type="number" name="stock_minimo" class="form-input" min="0" step="1" value="0">
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button type="button" class="btn btn-secondary" onclick="Modal.close('modal-nuevo-producto')" style="flex: 1;">Cancelar</button>
+                <button type="submit" class="btn btn-primary" style="flex: 1;">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="modal-ajustar-stock" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title" id="ajustar-stock-title">Ajustar Stock</h3>
+            <button class="modal-close" onclick="Modal.close('modal-ajustar-stock')">x</button>
+        </div>
+        <form id="form-ajustar-stock">
+            <input type="hidden" name="producto_id" id="ajuste-producto-id">
+            <div class="form-group">
+                <label class="form-label">Acción</label>
+                <select name="accion_ajuste" id="accion_ajuste" class="form-input" required>
+                    <option value="sumar">➕ Sumar Stock</option>
+                    <option value="restar">➖ Restar Stock</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Cantidad a ajustar *</label>
+                <input type="number" name="cantidad" class="form-input" min="1" step="1" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Motivo del ajuste</label>
+                <input type="text" name="nota" class="form-input" placeholder="Ej: Compra, pérdida, inventario físico...">
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button type="button" class="btn btn-secondary" onclick="Modal.close('modal-ajustar-stock')" style="flex: 1;">Cancelar</button>
+                <button type="submit" class="btn btn-primary" style="flex: 1;">Ajustar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="modal-editar-producto" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Editar Producto</h3>
+            <button class="modal-close" onclick="Modal.close('modal-editar-producto')">x</button>
+        </div>
+        <form id="form-editar-producto">
+            <input type="hidden" name="producto_id" id="editar-producto-id">
+            <div class="form-group">
+                <label class="form-label">Nombre *</label>
+                <input type="text" name="nombre" id="editar-producto-nombre" class="form-input" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Categoria</label>
+                <input type="text" name="categoria" id="editar-producto-categoria" class="form-input">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Referencia / Modelo</label>
+                <input type="text" name="referencia" id="editar-producto-referencia" class="form-input">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Precio compra</label>
+                <input type="text" name="precio_compra" id="editar-producto-compra" inputmode="numeric" class="form-input" value="0">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Precio venta</label>
+                <input type="text" name="precio_venta" id="editar-producto-venta" inputmode="numeric" class="form-input" value="0">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Stock mínimo</label>
+                <input type="number" name="stock_minimo" id="editar-producto-minimo" class="form-input" min="0" step="1" value="0">
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button type="button" class="btn btn-secondary" onclick="Modal.close('modal-editar-producto')" style="flex: 1;">Cancelar</button>
+                <button type="submit" class="btn btn-primary" style="flex: 1;">Guardar Cambios</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Registrar Factura - {{ nombre_tienda }}{% endblock %}
+
+{% block main_class %}container-small{% endblock %}
+
+{% block extra_head %}
+<style>
+    .container-small {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="section">
+    <div class="section-header">
+        <h2 class="section-title">
+            <span class="section-title-icon" style="background: rgba(234, 88, 12, 0.15); color: #ea580c;">📄</span>
+            Registrar Factura
+        </h2>
+    </div>
+
+    <div id="form-container">
+        <form id="form-factura">
+        <!-- Selección de proveedor -->
+        <div class="form-group">
+            <label class="form-label">Proveedor</label>
+            <div class="search-box" style="margin-bottom: 0;">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="buscar-proveedor" class="search-input" placeholder="Buscar proveedor..." autocomplete="off">
+                <div id="resultados-busqueda" class="search-results"></div>
+            </div>
+            <div id="proveedor-seleccionado" style="display: none; margin-top: 0.75rem;"></div>
+        </div>
+
+        <!-- Monto -->
+        <div class="form-group">
+            <label class="form-label">Monto de la Factura *</label>
+            <input type="text" id="monto" inputmode="numeric" class="form-input" placeholder="0" required>
+        </div>
+
+        <!-- Descripción -->
+        <div class="form-group">
+            <label class="form-label">Descripción</label>
+            <input type="text" id="descripcion" class="form-input" placeholder="Ej: Mercancía de temporada, pedido #123...">
+        </div>
+
+        <!-- Fecha -->
+        <div class="form-group">
+            <label class="form-label">Fecha de la Factura</label>
+            <input type="date" id="fecha" class="form-input">
+        </div>
+
+        <!-- Info -->
+        <div style="background: var(--bg-input); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.5rem; border: 1px solid var(--border-color);">
+            <p class="text-secondary" style="font-size: 0.875rem;">
+                📅 Fecha de registro: <strong id="fecha-actual"></strong>
+            </p>
+            <p class="text-muted" style="font-size: 0.875rem; margin-top: 0.5rem;">
+                ℹ️ La factura aumentará la deuda con el proveedor
+            </p>
+        </div>
+
+        <!-- Botones -->
+        <div style="display: flex; gap: 1rem;">
+            <a href="/" class="btn btn-secondary" style="flex: 1;">Cancelar</a>
+            <button type="submit" class="btn" style="flex: 1; background: #ea580c; color: white;">
+                📄 Registrar Factura
+            </button>
+        </div>
+    </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.body.dataset.page = 'nueva-factura';
+    
+    // Mostrar fecha actual
+    document.getElementById('fecha-actual').textContent = new Date().toLocaleDateString('es-CO', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+    
+    // Establecer fecha por defecto (hoy)
+    const fechaInput = document.getElementById('fecha');
+    if (fechaInput) {
+        fechaInput.value = new Date().toISOString().split('T')[0];
+    }
+</script>
+{% endblock %}

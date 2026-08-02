@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0f172a">
+    <title>{% block title %}{{ nombre_tienda }}{% endblock %}</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Script de carga temprana de tema -->
+    <script>
+        (function() {
+            const theme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+
+    <link rel="stylesheet" href="/static/css/styles.css?v=2.3">
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="theme-transition" data-page="{{ page_id }}">
+    <!-- Header -->
+    <header class="header">
+        <div class="container header-content">
+            <div style="display: flex; align-items: center; min-width: 0;">
+                <!-- Botón App Switcher 3x3 -->
+                <button id="app-switcher-toggle" class="app-switcher-btn" title="Menú de Aplicaciones">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                        <circle cx="4" cy="4" r="2.5"/>
+                        <circle cx="12" cy="4" r="2.5"/>
+                        <circle cx="20" cy="4" r="2.5"/>
+                        <circle cx="4" cy="12" r="2.5"/>
+                        <circle cx="12" cy="12" r="2.5"/>
+                        <circle cx="20" cy="12" r="2.5"/>
+                        <circle cx="4" cy="20" r="2.5"/>
+                        <circle cx="12" cy="20" r="2.5"/>
+                        <circle cx="20" cy="20" r="2.5"/>
+                    </svg>
+                </button>
+                
+                <a href="/" class="logo" style="margin-right: 0.5rem;">
+                    <div class="logo-icon">🏪</div>
+                    <span class="logo-text">{{ nombre_tienda }}</span>
+                </a>
+                
+                <span class="header-app-badge" id="active-app-badge">
+                    {% if page_id == 'dashboard' %}Inicio
+                    {% elif page_id == 'clientes' %}CRM / Clientes
+                    {% elif page_id == 'proveedores' %}Compras
+                    {% elif page_id == 'inventario' %}Inventario
+                    {% elif page_id == 'recordatorios' %}WhatsApp
+                    {% elif page_id == 'gastos' %}Gastos
+                    {% elif page_id == 'configuracion' %}Ajustes
+                    {% else %}ERP{% endif %}
+                </span>
+            </div>
+
+            <!-- Buscador Global Inteligente -->
+            <div class="global-search-container">
+                <div class="global-search-input-wrapper">
+                    <span class="global-search-icon">🔍</span>
+                    <input type="text" id="global-search" class="global-search-input" placeholder="Buscar clientes o productos..." autocomplete="off">
+                    <kbd class="global-search-kbd">Ctrl+K</kbd>
+                </div>
+                <div id="global-search-results" class="global-search-results">
+                    <!-- Resultados dinámicos de autocompletado -->
+                </div>
+            </div>
+            
+            <nav class="nav" style="display: flex; align-items: center;">
+                <a href="/" class="nav-link {% if page_id == 'dashboard' %}active{% endif %}">
+                    <span>📊</span>
+                    <span>Dashboard</span>
+                </a>
+                <a href="/clientes" class="nav-link {% if page_id == 'clientes' %}active{% endif %}">
+                    <span>👥</span>
+                    <span>Clientes</span>
+                </a>
+                <a href="/inventario" class="nav-link {% if page_id == 'inventario' %}active{% endif %}">
+                    <span>📦</span>
+                    <span>Inventario</span>
+                </a>
+            </nav>
+            
+            <div class="header-actions">
+                <button id="theme-toggle" class="theme-toggle-btn" title="Cambiar tema">
+                    <span class="sun-icon">☀️</span>
+                    <span class="moon-icon">🌙</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container {% block main_class %}{% endblock %}" style="padding-top: 2rem; padding-bottom: 2rem;">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Odoo-style App Switcher Overlay -->
+    <div id="app-switcher-overlay" class="app-switcher-overlay">
+        <button id="app-switcher-close" class="app-switcher-close" title="Cerrar Menú">×</button>
+        <div class="app-switcher-search">
+            <div class="app-switcher-search-wrapper">
+                <span class="app-switcher-search-icon">🔍</span>
+                <input type="text" id="app-switcher-search-input" class="app-switcher-search-input" placeholder="Buscar aplicación..." autocomplete="off">
+            </div>
+        </div>
+        <div class="app-switcher-grid">
+            <a href="/" class="odoo-card">
+                <div class="odoo-icon bg-odoo-dashboard">📊</div>
+                <span class="odoo-label">Inicio / Tablero</span>
+            </a>
+            <a href="/clientes" class="odoo-card">
+                <div class="odoo-icon bg-odoo-crm">👥</div>
+                <span class="odoo-label">CRM / Clientes</span>
+            </a>
+            <a href="/proveedores" class="odoo-card">
+                <div class="odoo-icon bg-odoo-purchases">🏭</div>
+                <span class="odoo-label">Compras / Prov.</span>
+            </a>
+            <a href="/inventario" class="odoo-card">
+                <div class="odoo-icon bg-odoo-inventory">📦</div>
+                <span class="odoo-label">Inventario</span>
+            </a>
+            <a href="/recordatorios" class="odoo-card">
+                <div class="odoo-icon bg-odoo-whatsapp">📱</div>
+                <span class="odoo-label">WhatsApp</span>
+            </a>
+            <a href="/gastos" class="odoo-card">
+                <div class="odoo-icon bg-odoo-expenses">💸</div>
+                <span class="odoo-label">Contabilidad / Gastos</span>
+            </a>
+            <a href="/configuracion" class="odoo-card">
+                <div class="odoo-icon bg-odoo-settings">⚙️</div>
+                <span class="odoo-label">Ajustes</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Scripts Comunes -->
+    <!-- Librería QRious para generación de códigos QR de pago -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+    <script src="/static/js/app.js?v=2.1"></script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

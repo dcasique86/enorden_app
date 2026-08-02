@@ -1,0 +1,403 @@
+{% extends "base.html" %}
+
+{% block title %}Gastos Operativos - {{ nombre_tienda }}{% endblock %}
+
+{% block content %}
+<style>
+    .gastos-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    .gastos-header h2 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    /* ---- Flujo de caja cards ---- */
+    .caja-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    .caja-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        padding: 1.25rem;
+        text-align: center;
+        transition: all 0.2s;
+    }
+    .caja-card.neto { border-color: #ea580c55; background: linear-gradient(135deg, rgba(234,88,12,0.08) 0%, var(--bg-card) 100%); }
+    .caja-card.entradas { border-color: #05966955; background: linear-gradient(135deg, rgba(5,150,105,0.08) 0%, var(--bg-card) 100%); }
+    .caja-card.salidas { border-color: #dc262655; background: linear-gradient(135deg, rgba(220,38,38,0.08) 0%, var(--bg-card) 100%); }
+    .caja-card .caja-icon { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    .caja-card .caja-label { font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 0.25rem; }
+    .caja-card .caja-value { font-size: 1.5rem; font-weight: 700; }
+    .caja-card.entradas .caja-value { color: #059669; }
+    .caja-card.salidas .caja-value { color: #dc2626; }
+    .caja-card.neto .caja-value { color: #ea580c; }
+    .caja-card .caja-sub { display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.75rem; border-top: 1px solid var(--border-color); padding-top: 0.75rem; }
+    .caja-card .caja-sub-item { display: flex; justify-content: space-between; font-size: 0.8125rem; color: var(--text-muted); }
+    .caja-card .caja-sub-item span:last-child { font-weight: 600; color: var(--text-secondary); }
+
+    /* ---- Formulario ---- */
+    .gasto-form-section {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    .gasto-form-section h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 1.25rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .gasto-form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 1rem;
+    }
+    .gasto-form-grid .form-group:last-child { grid-column: 1 / -1; }
+    .categoria-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+    .categoria-tab {
+        padding: 0.4rem 0.9rem;
+        border-radius: var(--radius-full);
+        border: 1px solid var(--border-color);
+        background: var(--bg-input);
+        color: var(--text-muted);
+        font-size: 0.8125rem;
+        cursor: pointer;
+        transition: all 0.15s;
+        user-select: none;
+    }
+    .categoria-tab:hover { border-color: #ea580c; color: #ea580c; }
+    .categoria-tab.active { background: #ea580c; border-color: #ea580c; color: white; font-weight: 600; }
+
+    /* ---- Historial de gastos ---- */
+    .gastos-list-section {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+    }
+    .gastos-list-header {
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+    .gastos-list-header h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+    .date-filter { display: flex; gap: 0.5rem; align-items: center; }
+    .date-filter input[type="date"] {
+        padding: 0.4rem 0.75rem;
+        background: var(--bg-input);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        color: var(--text-primary);
+        font-size: 0.875rem;
+    }
+    .gastos-table { width: 100%; border-collapse: collapse; }
+    .gastos-table th { padding: 0.75rem 1.5rem; text-align: left; font-size: 0.8125rem; color: var(--text-muted); background: var(--bg-input); border-bottom: 1px solid var(--border-color); }
+    .gastos-table td { padding: 0.85rem 1.5rem; border-bottom: 1px solid var(--border-color); font-size: 0.9rem; color: var(--text-primary); }
+    .gastos-table tr:last-child td { border-bottom: none; }
+    .gastos-table tr:hover td { background: var(--bg-input); }
+    .cat-badge {
+        display: inline-block;
+        padding: 0.2rem 0.65rem;
+        border-radius: var(--radius-full);
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .cat-Arriendo { background: rgba(139,92,246,0.15); color: #8b5cf6; }
+    .cat-Servicios { background: rgba(59,130,246,0.15); color: #3b82f6; }
+    .cat-Transporte { background: rgba(249,115,22,0.15); color: #f97316; }
+    .cat-Personal { background: rgba(236,72,153,0.15); color: #ec4899; }
+    .cat-Varios { background: rgba(107,114,128,0.15); color: #6b7280; }
+
+    @media (max-width: 768px) {
+        .caja-grid { grid-template-columns: 1fr; }
+        .gasto-form-grid { grid-template-columns: 1fr; }
+        .gasto-form-grid .form-group:last-child { grid-column: auto; }
+    }
+</style>
+
+<div class="gastos-header">
+    <h2>💸 Gastos Operativos</h2>
+    <div id="flujo-fecha-display" style="font-size:0.875rem; color: var(--text-muted);"></div>
+</div>
+
+<!-- Resumen Flujo de Caja -->
+<div class="caja-grid" id="caja-resumen">
+    <div class="caja-card entradas">
+        <div class="caja-icon">📥</div>
+        <div class="caja-label">Entradas de Hoy</div>
+        <div class="caja-value" id="caja-entradas">$0</div>
+        <div class="caja-sub">
+            <div class="caja-sub-item"><span>Ventas:</span><span id="caja-ventas">$0</span></div>
+            <div class="caja-sub-item"><span>Abonos:</span><span id="caja-abonos">$0</span></div>
+        </div>
+    </div>
+    <div class="caja-card salidas">
+        <div class="caja-icon">📤</div>
+        <div class="caja-label">Salidas de Hoy</div>
+        <div class="caja-value" id="caja-salidas">$0</div>
+        <div class="caja-sub">
+            <div class="caja-sub-item"><span>Proveedores:</span><span id="caja-proveedores">$0</span></div>
+            <div class="caja-sub-item"><span>Gastos:</span><span id="caja-gastos-total">$0</span></div>
+        </div>
+    </div>
+    <div class="caja-card neto">
+        <div class="caja-icon">🏦</div>
+        <div class="caja-label">Efectivo Neto del Día</div>
+        <div class="caja-value" id="caja-neto">$0</div>
+        <div class="caja-sub">
+            <div class="caja-sub-item"><span>Balance:</span><span id="caja-balance-text" style="color:#059669;">Positivo ✓</span></div>
+        </div>
+    </div>
+</div>
+
+<!-- Formulario de Nuevo Gasto -->
+<div class="gasto-form-section">
+    <h3>➕ Registrar Nuevo Gasto</h3>
+    <form id="form-gasto" onsubmit="GastosPage.submitGasto(event)">
+        <!-- Categorías rápidas -->
+        <div style="margin-bottom: 1rem;">
+            <label class="form-label" style="margin-bottom: 0.5rem; display: block;">Categoría *</label>
+            <div class="categoria-tabs" id="categoria-tabs">
+                <div class="categoria-tab active" data-cat="Arriendo" onclick="GastosPage.selectCategoria(this)">🏠 Arriendo</div>
+                <div class="categoria-tab" data-cat="Servicios" onclick="GastosPage.selectCategoria(this)">⚡ Servicios</div>
+                <div class="categoria-tab" data-cat="Transporte" onclick="GastosPage.selectCategoria(this)">🚗 Transporte</div>
+                <div class="categoria-tab" data-cat="Personal" onclick="GastosPage.selectCategoria(this)">👤 Personal</div>
+                <div class="categoria-tab" data-cat="Varios" onclick="GastosPage.selectCategoria(this)">📦 Varios</div>
+            </div>
+            <input type="hidden" id="categoria-input" value="Arriendo">
+        </div>
+
+        <div class="gasto-form-grid">
+            <div class="form-group">
+                <label class="form-label" for="gasto-monto">Monto *</label>
+                <input type="text" id="gasto-monto" class="form-input" placeholder="0" inputmode="numeric" required oninput="GastosPage.formatMonto(this)">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="gasto-fecha">Fecha</label>
+                <input type="date" id="gasto-fecha" class="form-input">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="gasto-descripcion">Descripción</label>
+                <input type="text" id="gasto-descripcion" class="form-input" placeholder="Ej: Pago arriendo local mes de mayo">
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 1rem; margin-top: 1.25rem;">
+            <button type="submit" id="btn-registrar-gasto" class="btn btn-lg" style="background: #ea580c; color: white; flex: 1;">
+                💸 Registrar Gasto
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Historial de Gastos -->
+<div class="gastos-list-section">
+    <div class="gastos-list-header">
+        <h3>📋 Historial de Gastos</h3>
+        <div class="date-filter">
+            <input type="date" id="filter-desde" onchange="GastosPage.cargarGastos()">
+            <span style="color: var(--text-muted); font-size: 0.875rem;">hasta</span>
+            <input type="date" id="filter-hasta" onchange="GastosPage.cargarGastos()">
+            <button class="btn btn-sm btn-secondary" onclick="GastosPage.resetFiltros()">Hoy</button>
+        </div>
+    </div>
+    <div id="gastos-tabla-container">
+        <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+            <div style="font-size: 2rem; margin-bottom: 0.5rem;">⏳</div>
+            <div>Cargando gastos...</div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const GastosPage = {
+    selectedCategoria: 'Arriendo',
+
+    async init() {
+        // Setear fecha de hoy por defecto
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('gasto-fecha').value = today;
+        document.getElementById('filter-desde').value = today;
+        document.getElementById('filter-hasta').value = today;
+        document.getElementById('flujo-fecha-display').textContent =
+            new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+        await Promise.all([this.cargarFlujoCaja(), this.cargarGastos()]);
+    },
+
+    selectCategoria(el) {
+        document.querySelectorAll('.categoria-tab').forEach(t => t.classList.remove('active'));
+        el.classList.add('active');
+        this.selectedCategoria = el.dataset.cat;
+        document.getElementById('categoria-input').value = el.dataset.cat;
+    },
+
+    formatMonto(input) {
+        const raw = input.value.replace(/\D/g, '');
+        if (raw) {
+            input.value = parseInt(raw).toLocaleString('es-CO');
+        }
+    },
+
+    async cargarFlujoCaja() {
+        try {
+            const res = await API.getFlujoCaja();
+            if (res.success) {
+                const d = res.data;
+                const entradas = d.ventas_total + d.abonos_total;
+                const salidas = d.pagos_proveedores_total + d.gastos_total;
+                document.getElementById('caja-entradas').textContent = formatCurrency(entradas);
+                document.getElementById('caja-ventas').textContent = formatCurrency(d.ventas_total);
+                document.getElementById('caja-abonos').textContent = formatCurrency(d.abonos_total);
+                document.getElementById('caja-salidas').textContent = formatCurrency(salidas);
+                document.getElementById('caja-proveedores').textContent = formatCurrency(d.pagos_proveedores_total);
+                document.getElementById('caja-gastos-total').textContent = formatCurrency(d.gastos_total);
+                document.getElementById('caja-neto').textContent = formatCurrency(d.efectivo_neto);
+                const balanceEl = document.getElementById('caja-balance-text');
+                if (d.efectivo_neto >= 0) {
+                    balanceEl.textContent = 'Positivo ✓';
+                    balanceEl.style.color = '#059669';
+                    document.getElementById('caja-neto').style.color = '#059669';
+                } else {
+                    balanceEl.textContent = 'Negativo ✕';
+                    balanceEl.style.color = '#dc2626';
+                    document.getElementById('caja-neto').style.color = '#dc2626';
+                }
+            }
+        } catch(e) { console.error('Error cargando flujo caja:', e); }
+    },
+
+    async cargarGastos() {
+        const desde = document.getElementById('filter-desde').value;
+        const hasta = document.getElementById('filter-hasta').value;
+        const container = document.getElementById('gastos-tabla-container');
+
+        try {
+            const res = await fetch(`/api/gastos/rango?desde=${desde}&hasta=${hasta}`);
+            const data = await res.json();
+
+            if (!data.success || data.data.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                        <div style="font-size: 2rem; margin-bottom: 0.5rem;">💸</div>
+                        <div>Sin gastos registrados en este período</div>
+                    </div>`;
+                return;
+            }
+
+            const total = data.data.reduce((s, g) => s + g.monto, 0);
+            container.innerHTML = `
+                <div style="overflow-x:auto;">
+                    <table class="gastos-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Categoría</th>
+                                <th>Descripción</th>
+                                <th style="text-align:right;">Monto</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.data.map(g => `
+                                <tr>
+                                    <td style="color:var(--text-muted); font-size:0.85rem;">${g.fecha ? g.fecha.split(' ')[0] : ''}</td>
+                                    <td><span class="cat-badge cat-${g.categoria}">${g.categoria}</span></td>
+                                    <td>${escapeHtml(g.descripcion || '—')}</td>
+                                    <td style="text-align:right; font-weight:700; color:#dc2626;">${formatCurrency(g.monto)}</td>
+                                </tr>`).join('')}
+                        </tbody>
+                        <tfoot>
+                            <tr style="background: var(--bg-input);">
+                                <td colspan="3" style="padding:0.85rem 1.5rem; font-weight:700; color:var(--text-primary);">Total del período</td>
+                                <td style="padding:0.85rem 1.5rem; text-align:right; font-weight:800; font-size:1.1rem; color:#dc2626;">${formatCurrency(total)}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>`;
+        } catch(e) {
+            container.innerHTML = `<div style="text-align:center; padding:2rem; color:var(--text-muted);">Error cargando gastos</div>`;
+        }
+    },
+
+    resetFiltros() {
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('filter-desde').value = today;
+        document.getElementById('filter-hasta').value = today;
+        this.cargarGastos();
+    },
+
+    async submitGasto(e) {
+        e.preventDefault();
+        const btn = document.getElementById('btn-registrar-gasto');
+        const originalText = btn.textContent;
+
+        const montoRaw = document.getElementById('gasto-monto').value.replace(/\./g, '').replace(',', '.');
+        const monto = parseFloat(montoRaw);
+
+        if (!monto || monto <= 0) { Toast.error('Ingresa un monto válido'); return; }
+
+        btn.textContent = 'Registrando...';
+        btn.disabled = true;
+
+        try {
+            const res = await API.registrarGasto({
+                categoria: this.selectedCategoria,
+                monto: monto,
+                descripcion: document.getElementById('gasto-descripcion').value || ''
+            });
+
+            if (res.success) {
+                Toast.success(`Gasto de ${formatCurrency(monto)} registrado ✓`);
+                document.getElementById('gasto-monto').value = '';
+                document.getElementById('gasto-descripcion').value = '';
+                await Promise.all([this.cargarFlujoCaja(), this.cargarGastos()]);
+            }
+        } catch(err) {
+            Toast.error(err.message || 'Error al registrar gasto');
+        } finally {
+            btn.textContent = originalText;
+            btn.disabled = false;
+        }
+    }
+};
+
+document.addEventListener('DOMContentLoaded', () => GastosPage.init());
+</script>
+{% endblock %}

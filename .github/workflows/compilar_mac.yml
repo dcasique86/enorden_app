@@ -1,0 +1,46 @@
+name: Compilar Instalador macOS (.dmg)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'enorden_macos/**'
+  workflow_dispatch: # Permite ejecutar la compilación manualmente desde la interfaz web de GitHub
+
+jobs:
+  build-macos:
+    name: Compilar en macOS (Apple Silicon M-Series)
+    runs-on: macos-latest # Utiliza corredores de macOS Apple Silicon más recientes en GitHub
+
+    steps:
+      - name: Descargar Código del Repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip' # Acelera la descarga al cachear dependencias de pip
+
+      - name: Instalar Dependencias del Sistema
+        run: |
+          cd enorden_macos
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r requirements.txt
+          python3 -m pip install pyinstaller
+
+      - name: Compilar Binario y Crear Instalador DMG
+        run: |
+          cd enorden_macos
+          chmod +x crear_dmg.sh
+          ./crear_dmg.sh
+
+      - name: Subir Instalador DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: EnOrden-Mac-Instalador
+          path: enorden_macos/EnOrden_Instalador.dmg
+          if-no-files-found: error
+          retention-days: 14 # Mantiene el archivo disponible para descarga durante 14 días

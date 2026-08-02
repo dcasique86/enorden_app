@@ -1,0 +1,28 @@
+﻿{
+    "id":  "1",
+    "jsonrpc":  "2.0",
+    "result":  {
+                   "content":  [
+                                   {
+                                       "text":  "{\"name\":\"projects/13538090786856787085/screens/a596229cdc15425d802e845c4a6bed4a\",\"title\":\"EN ORDEN Dashboard - Datos Localizados\",\"screenshot\":{\"name\":\"projects/13538090786856787085/files/a04e35eba61e44fbae833513d451866b\",\"downloadUrl\":\"https://lh3.googleusercontent.com/aida/AP1WRLtDeu-z_D1djmywifF6c6WpVIbhhjELsfZwGnhC3YH2tGkWVnJrNqZ6pBtwgz-9mx90qI-ZVCn-L7MP-ZFKw5gyLPmuXBKwkV9Ti2eEY0vfupJ6MMVUVTDSPOjZBITGGhqPEaqtCBBHl4GAfzboxuLin_4swrQpAKuJPh-yBmeoTPknUstyAQObF7rre2PgkzmI8AIPPZqTB9aWXiUqsjrzBb6JCznh7i7v-6qKW3m_vlT-9igx6UuZHq8J\"},\"htmlCode\":{\"name\":\"projects/13538090786856787085/files/26f9513ebc7949509fe931338aeb2b62\",\"downloadUrl\":\"https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzE2MTcxNWYyMDYzZDQ2YzJhZTJkOGQwODIzOTQzNjM5EgsSBxDsivuj6RkYAZIBJAoKcHJvamVjdF9pZBIWQhQxMzUzODA5MDc4Njg1Njc4NzA4NQ\u0026filename=\u0026opi=96797242\",\"mimeType\":\"text/html\"},\"width\":\"2560\",\"height\":\"2322\",\"deviceType\":\"DESKTOP\"}",
+                                       "type":  "text"
+                                   }
+                               ],
+                   "structuredContent":  {
+                                             "deviceType":  "DESKTOP",
+                                             "height":  "2322",
+                                             "htmlCode":  {
+                                                              "downloadUrl":  "https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzE2MTcxNWYyMDYzZDQ2YzJhZTJkOGQwODIzOTQzNjM5EgsSBxDsivuj6RkYAZIBJAoKcHJvamVjdF9pZBIWQhQxMzUzODA5MDc4Njg1Njc4NzA4NQ\u0026filename=\u0026opi=96797242",
+                                                              "mimeType":  "text/html",
+                                                              "name":  "projects/13538090786856787085/files/26f9513ebc7949509fe931338aeb2b62"
+                                                          },
+                                             "name":  "projects/13538090786856787085/screens/a596229cdc15425d802e845c4a6bed4a",
+                                             "screenshot":  {
+                                                                "downloadUrl":  "https://lh3.googleusercontent.com/aida/AP1WRLtDeu-z_D1djmywifF6c6WpVIbhhjELsfZwGnhC3YH2tGkWVnJrNqZ6pBtwgz-9mx90qI-ZVCn-L7MP-ZFKw5gyLPmuXBKwkV9Ti2eEY0vfupJ6MMVUVTDSPOjZBITGGhqPEaqtCBBHl4GAfzboxuLin_4swrQpAKuJPh-yBmeoTPknUstyAQObF7rre2PgkzmI8AIPPZqTB9aWXiUqsjrzBb6JCznh7i7v-6qKW3m_vlT-9igx6UuZHq8J",
+                                                                "name":  "projects/13538090786856787085/files/a04e35eba61e44fbae833513d451866b"
+                                                            },
+                                             "title":  "EN ORDEN Dashboard - Datos Localizados",
+                                             "width":  "2560"
+                                         }
+               }
+}

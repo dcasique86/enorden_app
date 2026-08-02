@@ -1,0 +1,14 @@
+from enum import Enum
+
+
+class TipoOperacion(str, Enum):
+    COMPRA = "COMPRA"
+    PRESTAMO_MERCANCIA = "PRESTAMO_MERCANCIA"
+    DEVOLUCION_CLIENTE = "DEVOLUCION_CLIENTE"
+    DEVOLUCION_PROVEEDOR = "DEVOLUCION_PROVEEDOR"
+
+
+class EstadoOperacion(str, Enum):
+    COMPRA = "COMPRA"
+    PENDIENTE = "PENDIENTE"
+    DEVUELTO = "DEVUELTO"

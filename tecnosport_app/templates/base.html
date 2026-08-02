@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0f172a">
+    <title>{% block title %}{{ nombre_tienda }}{% endblock %}</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Script de carga temprana de tema -->
+    <script>
+        (function() {
+            const theme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+
+    <link rel="stylesheet" href="/static/css/styles.css?v=2.4">
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="theme-transition" data-page="{{ page_id }}">
+    <div class="viewport-layout">
+
+        <!-- Sidebar EN ORDEN -->
+        <aside class="app-sidebar">
+            <div class="sidebar-brand">
+                <div class="sidebar-logo">🏪</div>
+                <div class="sidebar-brand-text">
+                    <div class="sidebar-title">EN ORDEN</div>
+                    <div class="sidebar-subtitle">{{ nombre_tienda }}</div>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="/" class="sidebar-link {% if page_id == 'dashboard' %}active{% endif %}" data-spa>
+                    <span class="sidebar-icon">📊</span><span class="sidebar-label">Dashboard</span>
+                </a>
+                <a href="/clientes" class="sidebar-link {% if page_id == 'clientes' %}active{% endif %}" data-spa>
+                    <span class="sidebar-icon">👥</span><span class="sidebar-label">Clientes</span>
+                </a>
+                <a href="/inventario" class="sidebar-link {% if page_id == 'inventario' %}active{% endif %}" data-spa>
+                    <span class="sidebar-icon">📦</span><span class="sidebar-label">Inventario</span>
+                </a>
+                <a href="/proveedores" class="sidebar-link {% if page_id == 'proveedores' %}active{% endif %}" data-spa>
+                    <span class="sidebar-icon">🏭</span><span class="sidebar-label">Compras</span>
+                </a>
+                <a href="/gastos" class="sidebar-link {% if page_id == 'gastos' %}active{% endif %}" data-spa>
+                    <span class="sidebar-icon">💸</span><span class="sidebar-label">Gastos</span>
+                </a>
+                <a href="/recordatorios" class="sidebar-link {% if page_id == 'recordatorios' %}active{% endif %}" data-spa>
+                    <span class="sidebar-icon">📱</span><span class="sidebar-label">WhatsApp</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <a href="/nuevo-prestamo" class="sidebar-cta" data-spa>
+                    <span>➕</span><span class="sidebar-label">Nueva Operación</span>
+                </a>
+                <a href="/configuracion" class="sidebar-link {% if page_id == 'configuracion' %}active{% endif %}" data-spa>
+                    <span class="sidebar-icon">⚙️</span><span class="sidebar-label">Configuración</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Shell derecho: topbar + contenido -->
+        <div class="app-shell">
+            <header class="header topbar viewport-header">
+                <div class="container header-content">
+                    <div style="display: flex; align-items: center; min-width: 0;">
+                        <button id="app-switcher-toggle" class="app-switcher-btn" title="Menú de Aplicaciones">
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                                <circle cx="4" cy="4" r="2.5"/><circle cx="12" cy="4" r="2.5"/><circle cx="20" cy="4" r="2.5"/>
+                                <circle cx="4" cy="12" r="2.5"/><circle cx="12" cy="12" r="2.5"/><circle cx="20" cy="12" r="2.5"/>
+                                <circle cx="4" cy="20" r="2.5"/><circle cx="12" cy="20" r="2.5"/><circle cx="20" cy="20" r="2.5"/>
+                            </svg>
+                        </button>
+                        <span class="header-app-badge" id="active-app-badge">
+                            {% if page_id == 'dashboard' %}Inicio
+                            {% elif page_id == 'clientes' %}CRM / Clientes
+                            {% elif page_id == 'proveedores' %}Compras
+                            {% elif page_id == 'inventario' %}Inventario
+                            {% elif page_id == 'recordatorios' %}WhatsApp
+                            {% elif page_id == 'gastos' %}Gastos
+                            {% elif page_id == 'configuracion' %}Ajustes
+                            {% else %}ERP{% endif %}
+                        </span>
+                        <span class="notif-badge" id="badge-atencion" title="Atención requerida" style="display:none;">🔔</span>
+                    </div>
+
+                    <div class="assistant-search-container">
+                        <div class="assistant-search-input-wrapper">
+                            <span class="assistant-search-icon">🤖</span>
+                            <input type="text" id="assistant-search" class="assistant-search-input" placeholder="Pregúntale al asistente o busca clientes, productos, facturas..." autocomplete="off">
+                            <span class="assistant-search-hint">Ctrl+K</span>
+                        </div>
+                        <div id="assistant-search-results" class="assistant-search-results"></div>
+                    </div>
+
+                    <div class="topbar-actions">
+                        <div class="topbar-user">
+                            <div class="topbar-greeting">
+                                <span class="topbar-greeting-name">Buenos días</span>
+                                <span class="topbar-greeting-date" id="topbar-date"></span>
+                            </div>
+                            <div class="topbar-avatar">EO</div>
+                        </div>
+                        <button id="theme-toggle" class="theme-toggle-btn" title="Cambiar tema">
+                            <span class="sun-icon">☀️</span>
+                            <span class="moon-icon">🌙</span>
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Main Content -->
+            <main class="viewport-content">
+                <div class="container {% block main_class %}{% endblock %}" id="spa-content">
+                    {% block context_nav %}{% endblock %}
+                    {% block content %}{% endblock %}
+                </div>
+            </main>
+        </div>
+
+        <!-- App Switcher -->
+        <div id="app-switcher-overlay" class="app-switcher-overlay">
+            <button id="app-switcher-close" class="app-switcher-close" title="Cerrar Menú">×</button>
+            <div class="app-switcher-search">
+                <div class="app-switcher-search-wrapper">
+                    <span class="app-switcher-search-icon">🔍</span>
+                    <input type="text" id="app-switcher-search-input" class="app-switcher-search-input" placeholder="Buscar aplicación..." autocomplete="off">
+                </div>
+            </div>
+            <div class="app-switcher-grid">
+                <a href="/" class="odoo-card" data-spa>
+                    <div class="odoo-icon bg-odoo-dashboard">📊</div>
+                    <span class="odoo-label">Inicio / Tablero</span>
+                </a>
+                <a href="/clientes" class="odoo-card" data-spa>
+                    <div class="odoo-icon bg-odoo-crm">👥</div>
+                    <span class="odoo-label">CRM / Clientes</span>
+                </a>
+                <a href="/proveedores" class="odoo-card" data-spa>
+                    <div class="odoo-icon bg-odoo-purchases">🏭</div>
+                    <span class="odoo-label">Compras / Prov.</span>
+                </a>
+                <a href="/inventario" class="odoo-card" data-spa>
+                    <div class="odoo-icon bg-odoo-inventory">📦</div>
+                    <span class="odoo-label">Inventario</span>
+                </a>
+                <a href="/recordatorios" class="odoo-card" data-spa>
+                    <div class="odoo-icon bg-odoo-whatsapp">📱</div>
+                    <span class="odoo-label">WhatsApp</span>
+                </a>
+                <a href="/gastos" class="odoo-card" data-spa>
+                    <div class="odoo-icon bg-odoo-expenses">💸</div>
+                    <span class="odoo-label">Contabilidad / Gastos</span>
+                </a>
+                <a href="/configuracion" class="odoo-card" data-spa>
+                    <div class="odoo-icon bg-odoo-settings">⚙️</div>
+                    <span class="odoo-label">Ajustes</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Modal Confirmar Eliminación -->
+        <div id="modal-confirmar-eliminar" class="modal-overlay">
+            <div class="modal" style="max-width: 420px; text-align: center;">
+                <div class="modal-header" style="justify-content: center;">
+                    <h3 class="modal-title" id="eliminar-titulo">Eliminar</h3>
+                    <button class="modal-close" onclick="Modal.close('modal-confirmar-eliminar')">✕</button>
+                </div>
+                <div style="font-size: 3rem; margin: 1rem 0 0.5rem;">⚠️</div>
+                <p class="text-muted" id="eliminar-mensaje" style="margin-bottom: 1.5rem;">¿Seguro que deseas eliminar este elemento?</p>
+                <div style="display: flex; gap: 1rem;">
+                    <button type="button" class="btn btn-secondary" onclick="Modal.close('modal-confirmar-eliminar')" style="flex: 1;">Cancelar</button>
+                    <button type="button" class="btn btn-danger" id="btn-confirmar-eliminar" onclick="confirmarEliminar()" style="flex: 1;">Sí, eliminar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+    <script src="/static/js/app.js?v=2.17"></script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

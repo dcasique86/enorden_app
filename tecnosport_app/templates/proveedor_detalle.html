@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}{{ nombre_tienda }} - Detalle de Proveedor{% endblock %}
+
+{% block context_nav %}
+<!-- Back button -->
+<a href="/proveedores" class="btn btn-ghost" style="display: inline-flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+    ← Volver a Proveedores
+</a>
+{% endblock %}
+
+{% block content %}
+<div id="proveedor-content" class="page-view" style="padding-top:0.5rem;">
+    <div class="loading" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+        <div class="spinner"></div>
+        <p style="margin-top: 1rem;">Cargando información del proveedor...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.body.dataset.page = 'proveedor-detalle';
+    // Obtener ID del proveedor de la URL
+    const pathParts = window.location.pathname.split('/');
+    const proveedorId = pathParts[pathParts.length - 1];
+    document.body.dataset.proveedorId = proveedorId;
+</script>
+{% endblock %}

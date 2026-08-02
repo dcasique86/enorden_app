@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+
+{% block title %}Clientes - {{ nombre_tienda }}{% endblock %}
+
+{% block content %}
+<div class="page-view">
+    <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;padding:0.75rem 0;flex-shrink:0;">
+        <h2 class="section-title" style="margin:0;">
+            <span class="section-title-icon">👥</span>
+            Clientes
+        </h2>
+        <div style="display:flex;gap:0.5rem;">
+            <button class="btn btn-primary btn-sm" onclick="Modal.open('modal-nueva-devolucion-cliente')">
+                🔄 Nueva Devolución
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="Modal.open('modal-nuevo-cliente')">
+                + Nuevo Cliente
+            </button>
+        </div>
+    </div>
+
+    <div style="display:flex;gap:0.5rem;flex-shrink:0;margin-bottom:0.5rem;">
+        <div class="search-box" style="flex:1;margin-bottom:0;">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="search-clientes" class="search-input" placeholder="Buscar cliente por nombre o teléfono...">
+        </div>
+        <select id="orden-clientes" class="form-input" style="width:auto;flex-shrink:0;" onchange="Clientes.setOrden(this.value); Clientes.loadClientes();">
+            <option value="saldo_desc">Mayor saldo</option>
+            <option value="saldo_asc">Menor saldo</option>
+            <option value="nombre_asc">A - Z</option>
+            <option value="nombre_desc">Z - A</option>
+        </select>
+    </div>
+
+    <div id="clientes-list" class="scrollable-area">
+        <div class="loading">
+            <div class="spinner"></div>
+            <p style="margin-top: 1rem;">Cargando clientes...</p>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nuevo Cliente -->
+<div id="modal-nuevo-cliente" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Nuevo Cliente</h3>
+            <button class="modal-close" onclick="Modal.close('modal-nuevo-cliente')">✕</button>
+        </div>
+        <form onsubmit="event.preventDefault(); crearNuevoCliente(this);">
+            <div class="form-group">
+                <label class="form-label">Nombre *</label>
+                <input type="text" name="nombre" class="form-input" placeholder="Nombre completo" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Teléfono</label>
+                <input type="tel" name="telefono" class="form-input" placeholder="Número de teléfono">
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button type="button" class="btn btn-secondary" onclick="Modal.close('modal-nuevo-cliente')" style="flex: 1;">
+                    Cancelar
+                </button>
+                <button type="submit" class="btn btn-primary" style="flex: 1;">
+                    Crear Cliente
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+<!-- Modal Editar Cliente -->
+<div id="modal-editar-cliente" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">✏️ Editar Cliente</h3>
+            <button class="modal-close" onclick="Modal.close('modal-editar-cliente')">✕</button>
+        </div>
+        <form onsubmit="event.preventDefault(); guardarClienteEdicion(this);">
+            <input type="hidden" name="editar_cliente_id" id="editar-cliente-id">
+            <div class="form-group">
+                <label class="form-label">Nombre *</label>
+                <input type="text" name="editar_cliente_nombre" id="editar-cliente-nombre" class="form-input" placeholder="Nombre completo" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Teléfono</label>
+                <input type="tel" name="editar_cliente_telefono" id="editar-cliente-telefono" class="form-input" placeholder="Número de teléfono">
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button type="button" class="btn btn-secondary" onclick="Modal.close('modal-editar-cliente')" style="flex: 1;">
+                    Cancelar
+                </button>
+                <button type="submit" class="btn btn-primary" style="flex: 1;">
+                    Guardar Cambios
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<!-- Modal Nueva Devolución Cliente -->
+<div id="modal-nueva-devolucion-cliente" class="modal-overlay">
+    <div class="modal" style="max-width: 500px;">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <span style="color: var(--warning);">🔄</span>
+                Nueva Devolución de Cliente
+            </h3>
+            <button class="modal-close" onclick="Modal.close('modal-nueva-devolucion-cliente')">✕</button>
+        </div>
+        <form onsubmit="event.preventDefault(); crearDevolucionCliente(this);" id="form-devolucion-cliente">
+            <input type="hidden" name="cliente_id" id="devolucion-cliente-id">
+            
+            <div class="form-group">
+                <label class="form-label">Cliente *</label>
+                <div class="search-box" style="margin-bottom: 0;">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="buscar-cliente-devolucion" class="search-input" placeholder="Buscar cliente por nombre o teléfono..." autocomplete="off">
+                    <div id="resultados-busqueda-devolucion" class="search-results"></div>
+                </div>
+                <div id="cliente-seleccionado-devolucion" style="display: none; margin-top: 0.75rem;"></div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Descripción *</label>
+                <textarea name="descripcion" class="form-input" placeholder="Descripción de la devolución (ej: devolución de 2 camisetas Nike talla M)" rows="2" required></textarea>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Monto *</label>
+                <input type="text" name="monto" inputmode="decimal" class="form-input" placeholder="0.00" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Observaciones</label>
+                <textarea name="observaciones" class="form-input" placeholder="Observaciones adicionales..." rows="2"></textarea>
+            </div>
+
+            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button type="button" class="btn btn-secondary" onclick="Modal.close('modal-nueva-devolucion-cliente')" style="flex: 1;">
+                    Cancelar
+                </button>
+                <button type="submit" class="btn btn-primary" style="flex: 1;">
+                    🔄 Registrar Devolución
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    (function() {
+        // Búsqueda de cliente en modal de devolución
+        const devSearch = document.getElementById('buscar-cliente-devolucion');
+        const devResults = document.getElementById('resultados-busqueda-devolucion');
+        const devSelected = document.getElementById('cliente-seleccionado-devolucion');
+        const devClienteId = document.getElementById('devolucion-cliente-id');
+
+        if (devSearch && devResults && !devSearch._listenerAttached) {
+            devSearch._listenerAttached = true;
+            let searchTimeout;
+            devSearch.addEventListener('input', () => {
+                clearTimeout(searchTimeout);
+                const q = devSearch.value.trim();
+                if (q.length < 1) { devResults.classList.remove('active'); return; }
+                searchTimeout = setTimeout(async () => {
+                    try {
+                        const res = await fetch(`/api/clientes/buscar?q=${encodeURIComponent(q)}`);
+                        const json = await res.json();
+                        const clientes = json.data || [];
+                        if (clientes.length === 0) {
+                            devResults.innerHTML = '<div class="search-result-item"><span class="text-muted">Sin resultados</span></div>';
+                        } else {
+                            devResults.innerHTML = clientes.map(c => `
+                                <div class="search-result-item" data-id="${c.id}" data-nombre="${c.nombre}" data-telefono="${c.telefono || ''}" data-saldo="${c.saldo || 0}">
+                                    <div class="cliente-info">
+                                        <div class="cliente-avatar">${(c.nombre||'?')[0]}</div>
+                                        <div>
+                                            <div class="cliente-nombre">${c.nombre}</div>
+                                            <div class="cliente-deuda">${c.telefono || ''}</div>
+                                        </div>
+                                    </div>
+                                    <div class="cliente-saldo">$${(c.saldo || 0).toLocaleString()}</div>
+                                </div>
+                            `).join('');
+                            devResults.querySelectorAll('.search-result-item').forEach(el => {
+                                el.addEventListener('click', () => {
+                                    devClienteId.value = el.dataset.id;
+                                    devSearch.style.display = 'none';
+                                    devResults.classList.remove('active');
+                                    devSelected.innerHTML = `
+                                        <div class="cliente-item" style="cursor: default; border-color: var(--success);">
+                                            <div class="cliente-info">
+                                                <div class="cliente-avatar">${(el.dataset.nombre||'?')[0]}</div>
+                                                <div>
+                                                    <div class="cliente-nombre">${el.dataset.nombre}</div>
+                                                    <div class="cliente-deuda">${el.dataset.telefono || ''}</div>
+                                                </div>
+                                            </div>
+                                            <button type="button" class="btn btn-ghost" onclick="clearClienteDevolucion()">✕</button>
+                                        </div>
+                                    `;
+                                    devSelected.style.display = 'block';
+                                });
+                            });
+                        }
+                        devResults.classList.add('active');
+                    } catch (e) { console.error('Error buscando cliente:', e); }
+                }, 300);
+            });
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.search-box')) devResults.classList.remove('active');
+            });
+        }
+    })();
+
+    function clearClienteDevolucion() {
+        const search = document.getElementById('buscar-cliente-devolucion');
+        const selected = document.getElementById('cliente-seleccionado-devolucion');
+        const idInput = document.getElementById('devolucion-cliente-id');
+        if (search) { search.style.display = 'block'; search.value = ''; search.focus(); }
+        if (selected) selected.style.display = 'none';
+        if (idInput) idInput.value = '';
+    }
+
+    async function crearDevolucionCliente(form) {
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+        
+        if (!data.descripcion.trim() || !data.monto) {
+            Toast.error('Complete todos los campos requeridos');
+            return;
+        }
+        
+        const btn = form.querySelector('button[type="submit"]');
+        const originalText = btn.textContent;
+        btn.textContent = 'Guardando...';
+        btn.disabled = true;
+        
+        try {
+            const res = await API.registrarDevolucionCliente({
+                cliente_id: data.cliente_id,
+                descripcion: data.descripcion,
+                monto: parseFloat(String(data.monto).replace(/\./g, '')),
+                observaciones: data.observaciones || ''
+            });
+            
+            if (res.success) {
+                Toast.success('Devolución registrada exitosamente');
+                Modal.close('modal-nueva-devolucion-cliente');
+                form.reset();
+            } else {
+                Toast.error('Error al registrar devolución');
+            }
+        } catch (error) {
+            Toast.error('Error al registrar devolución: ' + error.message);
+        } finally {
+            btn.textContent = originalText;
+            btn.disabled = false;
+        }
+    }
+</script>
+{% endblock %}

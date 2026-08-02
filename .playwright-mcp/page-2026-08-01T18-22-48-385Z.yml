@@ -1,0 +1,54 @@
+- generic [ref=f1e2]:
+  - complementary [ref=f1e3]:
+    - generic [ref=f1e4]: 🏪
+    - navigation [ref=f1e6]:
+      - link "📊" [ref=f1e7] [cursor=pointer]:
+        - /url: /
+      - link "👥" [ref=f1e9] [cursor=pointer]:
+        - /url: /clientes
+      - link "📦" [ref=f1e11] [cursor=pointer]:
+        - /url: /inventario
+      - link "🏭" [ref=f1e13] [cursor=pointer]:
+        - /url: /proveedores
+      - link "💸" [ref=f1e15] [cursor=pointer]:
+        - /url: /gastos
+      - link "📱" [ref=f1e17] [cursor=pointer]:
+        - /url: /recordatorios
+    - generic [ref=f1e19]:
+      - link "➕" [ref=f1e20] [cursor=pointer]:
+        - /url: /nuevo-prestamo
+      - link "⚙️" [ref=f1e22] [cursor=pointer]:
+        - /url: /configuracion
+  - generic [ref=f1e24]:
+    - banner [ref=f1e25]:
+      - generic [ref=f1e26]:
+        - generic [ref=f1e27]:
+          - button "Menú de Aplicaciones" [ref=f1e28] [cursor=pointer]
+          - generic [ref=f1e39]: CRM / Clientes
+        - generic [ref=f1e41]:
+          - generic: 🤖
+          - textbox "Pregúntale al asistente o busca clientes, productos, facturas..." [ref=f1e42]
+        - generic [ref=f1e43]:
+          - generic [ref=f1e44]: EO
+          - button "☀️" [ref=f1e46] [cursor=pointer]
+    - main [ref=f1e48]:
+      - generic [ref=f1e50]:
+        - generic [ref=f1e51]:
+          - heading "👥 Clientes" [level=2] [ref=f1e52]:
+            - generic [ref=f1e53]: 👥
+            - text: Clientes
+          - generic [ref=f1e54]:
+            - button "🔄 Nueva Devolución" [ref=f1e55] [cursor=pointer]
+            - button "+ Nuevo Cliente" [ref=f1e56] [cursor=pointer]
+        - generic [ref=f1e57]:
+          - generic [ref=f1e58]:
+            - generic [ref=f1e59]: 🔍
+            - textbox "Buscar cliente por nombre o teléfono..." [ref=f1e60]
+          - combobox [ref=f1e61]:
+            - option "Mayor saldo" [selected]
+            - option "Menor saldo"
+            - option "A - Z"
+            - option "Z - A"
+        - generic [ref=f1e63]:
+          - paragraph [ref=f1e64]: Error al cargar clientes
+          - button "Reintentar" [ref=f1e65] [cursor=pointer]

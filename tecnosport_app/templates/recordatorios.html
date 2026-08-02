@@ -1,0 +1,505 @@
+{% extends "base.html" %}
+
+{% block title %}Recordatorios WhatsApp - {{ nombre_tienda }}{% endblock %}
+
+{% block content %}
+<style>
+    .blast-header {
+        background: linear-gradient(135deg, rgba(37,211,102,0.12) 0%, rgba(37,211,102,0.04) 100%);
+        border: 1px solid rgba(37,211,102,0.3);
+        border-radius: var(--radius-lg);
+        padding: 1.5rem 2rem;
+        margin-bottom: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 1.25rem;
+    }
+    .blast-header-icon {
+        width: 56px; height: 56px;
+        background: rgba(37,211,102,0.15);
+        border-radius: var(--radius-md);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.75rem; flex-shrink: 0;
+    }
+    .blast-header-info h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .blast-header-info p  { font-size: 0.9rem; color: var(--text-muted); }
+
+    /* Toolbar */
+    .blast-toolbar {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        padding: 1rem 1.25rem;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+    .filter-btn {
+        padding: 0.4rem 1rem;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-input);
+        color: var(--text-primary);
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-weight: 500;
+    }
+    .filter-btn:hover, .filter-btn.active {
+        background: rgba(37,211,102,0.15);
+        border-color: rgba(37,211,102,0.5);
+        color: #25d366;
+    }
+    .spacer { flex: 1; }
+    .select-all-btn {
+        padding: 0.4rem 1rem;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border-color);
+        background: transparent;
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .select-all-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+    /* Send Button */
+    .btn-send-blast {
+        display: flex; align-items: center; gap: 0.5rem;
+        padding: 0.55rem 1.25rem;
+        background: #25d366;
+        color: white;
+        border: none;
+        border-radius: var(--radius-md);
+        font-size: 0.9rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .btn-send-blast:hover { background: #1ebe5d; transform: translateY(-1px); }
+    .btn-send-blast:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .blast-count-badge {
+        background: rgba(255,255,255,0.25);
+        border-radius: 999px;
+        padding: 0.05rem 0.5rem;
+        font-size: 0.8rem;
+        font-weight: 700;
+    }
+
+    /* Client rows */
+    .blast-table-wrap { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); overflow: hidden; }
+    .blast-table { width: 100%; border-collapse: collapse; }
+    .blast-table thead tr { background: var(--bg-input); }
+    .blast-table thead th { position: sticky; top: 0; z-index: 1; background: var(--bg-input); }
+    .blast-table th { padding: 0.75rem 1rem; text-align: left; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .blast-table td { padding: 0.85rem 1rem; border-top: 1px solid var(--border-color); vertical-align: middle; }
+    .blast-table tbody tr { transition: background 0.15s; cursor: pointer; }
+    .blast-table tbody tr:hover { background: var(--bg-input); }
+    .blast-table tbody tr.selected { background: rgba(37,211,102,0.07); }
+    .blast-table tbody tr.hidden-row { display: none; }
+
+    /* Checkbox */
+    .blast-check {
+        width: 18px; height: 18px;
+        accent-color: #25d366;
+        cursor: pointer;
+    }
+
+    /* Client cell */
+    .client-cell { display: flex; align-items: center; gap: 0.75rem; }
+    .client-avatar-sm {
+        width: 36px; height: 36px; border-radius: 50%;
+        background: var(--primary);
+        color: white; font-size: 0.8rem; font-weight: 700;
+        display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+    }
+    .client-name { font-weight: 600; font-size: 0.95rem; }
+    .client-phone { font-size: 0.8rem; color: var(--text-muted); }
+    .no-phone-badge { font-size: 0.75rem; color: #f59e0b; background: rgba(245,158,11,0.1); border-radius: 4px; padding: 0.1rem 0.4rem; }
+
+    /* Saldo */
+    .saldo-cell { font-weight: 700; color: #ef4444; font-size: 0.95rem; }
+
+    /* Días badge */
+    .dias-badge {
+        display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px;
+        font-size: 0.78rem; font-weight: 600;
+    }
+    .dias-badge.nunca  { background: rgba(239,68,68,0.15); color: #ef4444; }
+    .dias-badge.alto   { background: rgba(239,68,68,0.1); color: #f97316; }
+    .dias-badge.medio  { background: rgba(245,158,11,0.12); color: #f59e0b; }
+    .dias-badge.bajo   { background: rgba(37,211,102,0.1); color: #25d366; }
+
+    /* Quick WA button */
+    .btn-wa-quick {
+        background: none; border: 1px solid rgba(37,211,102,0.3);
+        border-radius: var(--radius-md); padding: 0.3rem 0.6rem;
+        color: #25d366; cursor: pointer; font-size: 0.8rem;
+        transition: all 0.2s;
+    }
+    .btn-wa-quick:hover { background: rgba(37,211,102,0.1); }
+
+    /* Stats bar */
+    .stats-bar {
+        display: flex; gap: 1rem; flex-wrap: wrap;
+        margin-bottom: 1rem;
+    }
+    .stat-pill {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        padding: 0.6rem 1rem;
+        font-size: 0.85rem;
+        display: flex; align-items: center; gap: 0.4rem;
+    }
+    .stat-pill strong { color: var(--text-primary); }
+    .stat-pill span   { color: var(--text-muted); }
+
+    /* Sending overlay */
+    .sending-overlay {
+        display: none;
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.6);
+        z-index: 9999;
+        align-items: center; justify-content: center;
+        flex-direction: column; gap: 1rem;
+    }
+    .sending-overlay.show { display: flex; }
+    .sending-box {
+        background: var(--bg-card);
+        border-radius: var(--radius-lg);
+        padding: 2rem 2.5rem;
+        text-align: center;
+        max-width: 360px; width: 90%;
+        border: 1px solid var(--border-color);
+    }
+    .sending-icon { font-size: 3rem; margin-bottom: 0.75rem; }
+    .sending-progress { height: 6px; background: var(--bg-input); border-radius: 999px; overflow: hidden; margin: 1rem 0; }
+    .sending-progress-bar { height: 100%; background: #25d366; border-radius: 999px; transition: width 0.4s; }
+
+    /* Empty */
+    .empty-blast { padding: 3rem; text-align: center; color: var(--text-muted); }
+    .empty-blast .icon { font-size: 3rem; margin-bottom: 0.75rem; }
+</style>
+
+<!-- Sending overlay -->
+<div class="sending-overlay" id="sending-overlay">
+    <div class="sending-box">
+        <div class="sending-icon">📱</div>
+        <h3 id="sending-title">Enviando recordatorios...</h3>
+        <p id="sending-subtitle" style="font-size:0.875rem; color:var(--text-muted); margin-top:0.25rem;">Abriendo WhatsApp para cada cliente</p>
+        <div class="sending-progress">
+            <div class="sending-progress-bar" id="sending-bar" style="width:0%"></div>
+        </div>
+        <p id="sending-counter" style="font-size:0.85rem; color:var(--text-muted);">0 / 0</p>
+        <button class="btn btn-secondary mt-1" onclick="document.getElementById('sending-overlay').classList.remove('show')">Cerrar</button>
+    </div>
+</div>
+
+<div class="page-view">
+<!-- Header -->
+<div class="blast-header" style="flex-shrink:0;margin-bottom:0.75rem;">
+    <div class="blast-header-icon">📱</div>
+    <div class="blast-header-info">
+        <h1>Recordatorios WhatsApp</h1>
+        <p>Selecciona clientes con deuda y envíales un recordatorio masivo</p>
+    </div>
+</div>
+
+<!-- Stats bar -->
+<div class="stats-bar" id="stats-bar" style="flex-shrink:0;margin-bottom:0.75rem;">
+    <div class="stat-pill">
+        <strong id="stat-total">–</strong>
+        <span>clientes con deuda</span>
+    </div>
+    <div class="stat-pill">
+        <strong id="stat-total-deuda" style="color:#ef4444">–</strong>
+        <span>deuda total</span>
+    </div>
+    <div class="stat-pill">
+        <strong id="stat-enviados" style="color:#25d366">–</strong>
+        <span>mensajes enviados hoy</span>
+    </div>
+</div>
+
+<!-- Toolbar -->
+<div class="blast-toolbar" style="flex-shrink:0;margin-bottom:0.75rem;">
+    <button class="filter-btn active" data-filter="todos" onclick="Blast.setFilter('todos', this)">Todos</button>
+    <button class="filter-btn" data-filter="7"  onclick="Blast.setFilter('7',  this)">+7 días sin abonar</button>
+    <button class="filter-btn" data-filter="15" onclick="Blast.setFilter('15', this)">+15 días</button>
+    <button class="filter-btn" data-filter="30" onclick="Blast.setFilter('30', this)">+30 días</button>
+    <button class="filter-btn" data-filter="nunca" onclick="Blast.setFilter('nunca', this)">Nunca abonaron</button>
+    <div class="spacer"></div>
+    <button class="select-all-btn" id="btn-select-all" onclick="Blast.toggleSelectAll()">☑ Seleccionar todos</button>
+    <button class="btn-send-blast" id="btn-send" onclick="Blast.enviarSeleccionados()" disabled>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        Enviar <span class="blast-count-badge" id="count-badge">0</span>
+    </button>
+</div>
+
+<!-- Table -->
+<div class="blast-table-wrap" style="flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">
+    <div id="blast-loading" style="padding:3rem; text-align:center; color:var(--text-muted);">
+        <p>Cargando clientes con deuda...</p>
+    </div>
+    <div style="flex:1;overflow-y:auto;min-height:0;position:relative;">
+        <table class="blast-table" id="blast-table" style="display:none">
+            <thead>
+                <tr>
+                    <th style="width:44px"></th>
+                    <th>Cliente</th>
+                    <th>Deuda</th>
+                    <th>Días sin abonar</th>
+                    <th>Acción rápida</th>
+                </tr>
+            </thead>
+            <tbody id="blast-tbody"></tbody>
+        </table>
+    </div>
+    <div class="empty-blast" id="blast-empty" style="display:none">
+        <div class="icon">🎉</div>
+        <p style="font-weight:600; margin-bottom:0.25rem;">¡Sin deudas pendientes!</p>
+        <p style="font-size:0.875rem;">Todos tus clientes están al día.</p>
+    </div>
+</div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const Blast = {
+    clientes: [],
+    filteredClientes: [],
+    selectedIds: new Set(),
+    currentFilter: 'todos',
+
+    async init() {
+        await this.load();
+        this.updateStats();
+    },
+
+    async load() {
+        try {
+            const res = await fetch('/api/clientes/con-deuda');
+            const json = await res.json();
+            this.clientes = json.data || [];
+            this.applyFilter(this.currentFilter);
+            document.getElementById('blast-loading').style.display = 'none';
+            if (this.clientes.length === 0) {
+                document.getElementById('blast-empty').style.display = 'block';
+            } else {
+                document.getElementById('blast-table').style.display = 'table';
+            }
+            this.renderRows();
+        } catch(e) {
+            document.getElementById('blast-loading').innerHTML = '<p style="color:#ef4444">Error al cargar clientes. Recarga la página.</p>';
+        }
+    },
+
+    applyFilter(filter) {
+        this.currentFilter = filter;
+        if (filter === 'todos') {
+            this.filteredClientes = this.clientes;
+        } else if (filter === 'nunca') {
+            this.filteredClientes = this.clientes.filter(c => c.dias_sin_abonar === null);
+        } else {
+            const dias = parseInt(filter);
+            this.filteredClientes = this.clientes.filter(c => c.dias_sin_abonar === null || c.dias_sin_abonar >= dias);
+        }
+    },
+
+    setFilter(filter, btn) {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.applyFilter(filter);
+        this.selectedIds.clear();
+        this.renderRows();
+        this.updateSendBtn();
+    },
+
+    renderRows() {
+        const tbody = document.getElementById('blast-tbody');
+        if (!tbody) return;
+
+        if (this.filteredClientes.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-muted);">Ningún cliente coincide con este filtro</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = this.filteredClientes.map(c => {
+            const initials = c.nombre.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+            const saldoFmt = new Intl.NumberFormat('es-CO', {style:'currency', currency:'COP', maximumFractionDigits:0}).format(c.saldo);
+            const diasBadge = this.diasBadge(c.dias_sin_abonar);
+            const tienePhone = c.telefono && c.telefono.trim() !== '';
+            const checked = this.selectedIds.has(c.id) ? 'checked' : '';
+
+            return `
+            <tr id="row-${c.id}" class="${this.selectedIds.has(c.id)?'selected':''}" onclick="Blast.toggleRow('${c.id}')">
+                <td onclick="event.stopPropagation()">
+                    <input type="checkbox" class="blast-check" id="chk-${c.id}" ${checked}
+                        ${tienePhone ? '' : 'disabled title="Sin teléfono registrado"'}
+                        onchange="Blast.onCheck('${c.id}', this.checked)">
+                </td>
+                <td>
+                    <div class="client-cell">
+                        <div class="client-avatar-sm">${initials}</div>
+                        <div>
+                            <div class="client-name">${c.nombre}</div>
+                            <div class="client-phone">${tienePhone ? c.telefono : '<span class="no-phone-badge">Sin teléfono</span>'}</div>
+                        </div>
+                    </div>
+                </td>
+                <td><span class="saldo-cell">${saldoFmt}</span></td>
+                <td>${diasBadge}</td>
+                <td onclick="event.stopPropagation()">
+                    ${tienePhone ? `
+                    <button class="btn-wa-quick" onclick="Blast.enviarUno('${c.id}')" title="Enviar recordatorio ahora">
+                        📨 Enviar
+                    </button>` : `<span style="font-size:0.8rem;color:var(--text-muted)">—</span>`}
+                </td>
+            </tr>`;
+        }).join('');
+    },
+
+    diasBadge(dias) {
+        if (dias === null) return '<span class="dias-badge nunca">Nunca abonó</span>';
+        if (dias >= 30) return `<span class="dias-badge alto">${dias} días</span>`;
+        if (dias >= 15) return `<span class="dias-badge medio">${dias} días</span>`;
+        return `<span class="dias-badge bajo">${dias} días</span>`;
+    },
+
+    toggleRow(id) {
+        const c = this.filteredClientes.find(x => x.id === id);
+        if (!c || !c.telefono || !c.telefono.trim()) return;
+        const chk = document.getElementById('chk-' + id);
+        if (!chk) return;
+        chk.checked = !chk.checked;
+        this.onCheck(id, chk.checked);
+    },
+
+    onCheck(id, checked) {
+        if (checked) {
+            this.selectedIds.add(id);
+            document.getElementById('row-' + id)?.classList.add('selected');
+        } else {
+            this.selectedIds.delete(id);
+            document.getElementById('row-' + id)?.classList.remove('selected');
+        }
+        this.updateSendBtn();
+    },
+
+    toggleSelectAll() {
+        const seleccionables = this.filteredClientes.filter(c => c.telefono && c.telefono.trim());
+        const todosSeleccionados = seleccionables.every(c => this.selectedIds.has(c.id));
+        if (todosSeleccionados) {
+            seleccionables.forEach(c => { this.selectedIds.delete(c.id); });
+        } else {
+            seleccionables.forEach(c => { this.selectedIds.add(c.id); });
+        }
+        this.renderRows();
+        this.updateSendBtn();
+    },
+
+    updateSendBtn() {
+        const n = this.selectedIds.size;
+        const btn = document.getElementById('btn-send');
+        const badge = document.getElementById('count-badge');
+        if (badge) badge.textContent = n;
+        if (btn) btn.disabled = n === 0;
+    },
+
+    updateStats() {
+        const total = this.clientes.length;
+        const totalDeuda = this.clientes.reduce((s, c) => s + (c.saldo || 0), 0);
+        const enviados = parseInt(localStorage.getItem('wa_enviados_hoy') || '0');
+        const fechaHoy = new Date().toDateString();
+        const fechaGuardada = localStorage.getItem('wa_fecha_hoy');
+        const enviados_hoy = fechaGuardada === fechaHoy ? enviados : 0;
+
+        document.getElementById('stat-total').textContent = total;
+        document.getElementById('stat-total-deuda').textContent =
+            new Intl.NumberFormat('es-CO', {style:'currency', currency:'COP', maximumFractionDigits:0}).format(totalDeuda);
+        document.getElementById('stat-enviados').textContent = enviados_hoy;
+    },
+
+    async mensajeRecordatorio(cliente) {
+        // Usa la función global de WhatsApp si existe
+        if (window.WhatsApp && typeof window.WhatsApp.mensajeRecordatorio === 'function') {
+            return await window.WhatsApp.mensajeRecordatorio(
+                cliente.nombre,
+                cliente.saldo,
+                cliente.dias_sin_abonar
+            );
+        }
+        // Fallback
+        const saldoFmt = new Intl.NumberFormat('es-CO', {style:'currency', currency:'COP', maximumFractionDigits:0}).format(cliente.saldo);
+        const dias = cliente.dias_sin_abonar;
+        return `Hola ${cliente.nombre} 👋\n\nTe recordamos que tienes un saldo pendiente de *${saldoFmt}*.\n${dias ? `Han pasado ${dias} días desde tu último abono.` : ''}\n\nSi deseas hacer un abono o tienes alguna duda, comunícate con nosotros. 🙏`;
+    },
+
+    async enviarUno(id) {
+        const c = this.clientes.find(x => x.id === id);
+        if (!c || !c.telefono) return;
+        const mensaje = await this.mensajeRecordatorio(c);
+        const phone = c.telefono.replace(/[\s\-\(\)\+]/g, '');
+        const formattedPhone = phone.startsWith('57') ? phone : (phone.startsWith('3') && phone.length === 10 ? '57' + phone : phone);
+        window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(mensaje)}`, '_blank');
+        this.trackEnvio(1);
+        this.updateStats();
+    },
+
+    async enviarSeleccionados() {
+        const ids = [...this.selectedIds];
+        if (ids.length === 0) return;
+
+        const overlay = document.getElementById('sending-overlay');
+        const bar = document.getElementById('sending-bar');
+        const counter = document.getElementById('sending-counter');
+        overlay.classList.add('show');
+        bar.style.width = '0%';
+
+        let enviados = 0;
+        for (const id of ids) {
+            const c = this.clientes.find(x => x.id === id);
+            if (!c || !c.telefono) continue;
+            await new Promise(r => setTimeout(r, 900)); // Pequeño delay entre ventanas
+            const mensaje = await this.mensajeRecordatorio(c);
+            const phone = c.telefono.replace(/[\s\-\(\)\+]/g, '');
+            const formattedPhone = phone.startsWith('57') ? phone : (phone.startsWith('3') && phone.length === 10 ? '57' + phone : phone);
+            window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(mensaje)}`, '_blank');
+            enviados++;
+            const pct = Math.round((enviados / ids.length) * 100);
+            bar.style.width = pct + '%';
+            counter.textContent = `${enviados} / ${ids.length}`;
+        }
+
+        this.trackEnvio(enviados);
+        this.updateStats();
+
+        document.getElementById('sending-title').textContent = `✅ ¡Listo! ${enviados} recordatorios enviados`;
+        document.getElementById('sending-subtitle').textContent = 'Las ventanas de WhatsApp se abrieron en tu navegador.';
+    },
+
+    trackEnvio(cantidad) {
+        const hoy = new Date().toDateString();
+        const guardado = localStorage.getItem('wa_fecha_hoy');
+        let acum = parseInt(localStorage.getItem('wa_enviados_hoy') || '0');
+        if (guardado !== hoy) acum = 0;
+        acum += cantidad;
+        localStorage.setItem('wa_enviados_hoy', acum);
+        localStorage.setItem('wa_fecha_hoy', hoy);
+        // Histórico total
+        let total = parseInt(localStorage.getItem('wa_total_enviados') || '0');
+        total += cantidad;
+        localStorage.setItem('wa_total_enviados', total);
+        localStorage.setItem('wa_ultimo_envio', new Date().toISOString());
+    }
+};
+
+document.addEventListener('DOMContentLoaded', () => Blast.init());
+</script>
+{% endblock %}

@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block title %}Inicio - {{ nombre_tienda }}{% endblock %}
+
+{% block content %}
+<!-- Premium Welcome Banner -->
+<div class="welcome-banner-premium">
+    <div class="welcome-banner-decor"></div>
+    <div class="welcome-banner-content">
+        <div class="welcome-text-group">
+            <h1>¡Bienvenido a {{ nombre_tienda }} ERP!</h1>
+            <p>Tu suite de negocios modular para la gestión comercial y cuentas por cobrar.</p>
+            <div style="font-size: 0.9375rem; color: var(--text-muted); margin-top: 0.5rem;" id="current-date">
+                Cargando fecha...
+            </div>
+        </div>
+        <div class="system-badge-premium">
+            <div class="status-dot"></div>
+            <span>En línea</span>
+        </div>
+    </div>
+</div>
+
+<!-- Odoo App Launcher Grid -->
+<div class="launchpad-grid-container">
+    <div class="launchpad-grid">
+        <a href="/clientes" class="odoo-card">
+            <div class="odoo-icon bg-odoo-crm">👥</div>
+            <span class="odoo-label">CRM / Clientes</span>
+        </a>
+        <a href="/proveedores" class="odoo-card">
+            <div class="odoo-icon bg-odoo-purchases">🏭</div>
+            <span class="odoo-label">Compras / Prov.</span>
+        </a>
+        <a href="/inventario" class="odoo-card">
+            <div class="odoo-icon bg-odoo-inventory">📦</div>
+            <span class="odoo-label">Inventario</span>
+        </a>
+        <a href="/recordatorios" class="odoo-card">
+            <div class="odoo-icon bg-odoo-whatsapp">📱</div>
+            <span class="odoo-label">WhatsApp CRM</span>
+        </a>
+        <a href="/gastos" class="odoo-card">
+            <div class="odoo-icon bg-odoo-expenses">💸</div>
+            <span class="odoo-label">Gastos</span>
+        </a>
+        <a href="javascript:void(0);" onclick="toggleTableroAnalitico();" class="odoo-card" id="btn-app-tablero">
+            <div class="odoo-icon bg-odoo-dashboard" style="position: relative;">
+                📊
+                <span style="position: absolute; top: -5px; right: -5px; width: 12px; height: 12px; background: #dc2626; border-radius: 50%; display: none;" id="badge-atencion"></span>
+            </div>
+            <span class="odoo-label" style="font-weight: 800; color: var(--primary-light);">Tablero Analítico</span>
+        </a>
+        <a href="/configuracion" class="odoo-card">
+            <div class="odoo-icon bg-odoo-settings">⚙️</div>
+            <span class="odoo-label">Configuración</span>
+        </a>
+    </div>
+</div>
+
+<!-- Quick Financial Flow Panel (Always Visible) -->
+<div class="info-section" style="background: linear-gradient(135deg, rgba(19,109,236,0.06) 0%, var(--bg-card) 100%); border-color: rgba(19,109,236,0.25); margin-bottom: 2.5rem;">
+    <div class="section-header">
+        <div class="section-title">
+            <div class="section-title-icon">🏦</div>
+            <span>Flujo de Caja del Día</span>
+        </div>
+        <a href="/gastos" style="font-size: 0.8125rem; color: var(--primary-light); text-decoration: none; font-weight: 600;">Ver registros de gastos →</a>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;" id="dashboard-caja">
+        <div class="activity-stat" style="border-left: 4px solid var(--success); background: var(--bg-input); padding: 1.25rem; border-radius: var(--radius-md);">
+            <div class="number text-success" id="dash-caja-entradas" style="color:var(--success); font-size:1.6rem; font-weight: 700;">$0</div>
+            <div class="label" style="font-size: 0.8125rem; color: var(--text-muted); margin-top: 0.25rem;">📥 Entradas (Ventas + Abonos)</div>
+        </div>
+        <div class="activity-stat" style="border-left: 4px solid var(--danger); background: var(--bg-input); padding: 1.25rem; border-radius: var(--radius-md);">
+            <div class="number" id="dash-caja-salidas" style="color:var(--danger); font-size:1.6rem; font-weight: 700;">$0</div>
+            <div class="label" style="font-size: 0.8125rem; color: var(--text-muted); margin-top: 0.25rem;">📤 Salidas (Proveedores + Gastos)</div>
+        </div>
+        <div class="activity-stat" style="border-left: 4px solid var(--primary-light); background: var(--bg-input); padding: 1.25rem; border-radius: var(--radius-md);">
+            <div class="number" id="dash-caja-neto" style="color:var(--primary-light); font-size:1.6rem; font-weight: 700;">$0</div>
+            <div class="label" style="font-size: 0.8125rem; color: var(--text-muted); margin-top: 0.25rem;">💵 Efectivo Neto del Día</div>
+        </div>
+    </div>
+</div>
+
+<!-- Tablero Analítico App Container (Toggled via "Tablero Analítico" card) -->
+<div id="tablero-analitico-app" class="tablero-container" style="display: none; border-top: 1px dashed var(--border-color); padding-top: 2rem;">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem;">
+        <h2 style="font-size: 1.5rem; font-weight: 800; display: flex; align-items: center; gap: 0.5rem; color: var(--text-primary);">
+            <span>📊</span> Tablero Analítico e Indicadores Financieros
+        </h2>
+        <button onclick="toggleTableroAnalitico();" class="btn btn-sm btn-secondary">Cerrar Tablero</button>
+    </div>
+
+    <!-- Quick Shortcuts within Dashboard -->
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem;">
+        <a href="/nuevo-prestamo" class="btn btn-primary" style="padding: 1rem;">🤝 Registrar Préstamo</a>
+        <a href="/nuevo-abono" class="btn btn-success" style="padding: 1rem;">➕ Registrar Abono</a>
+        <a href="/nueva-factura" class="btn btn-secondary" style="padding: 1rem;">📄 Nueva Factura</a>
+        <a href="/nuevo-pago-proveedor" class="btn btn-secondary" style="padding: 1rem;">💳 Pagar Proveedor</a>
+    </div>
+
+    <!-- Activity Section -->
+    <div class="info-section">
+        <div class="section-header">
+            <div class="section-title">
+                <div class="section-title-icon">🕒</div>
+                <span>Actividad de Hoy</span>
+            </div>
+        </div>
+        <div class="activity-stats" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+            <div class="activity-stat" style="text-align: center; padding: 1rem; background: var(--bg-input); border-radius: var(--radius-md);">
+                <div class="number" id="stats-hoy-abonos" style="font-size: 2rem; font-weight: 700;">0</div>
+                <div class="label" style="color: var(--text-muted); font-size: 0.8125rem;">Abonos registrados</div>
+            </div>
+            <div class="activity-stat" style="text-align: center; padding: 1rem; background: var(--bg-input); border-radius: var(--radius-md);">
+                <div class="number" id="stats-hoy-facturas" style="font-size: 2rem; font-weight: 700;">0</div>
+                <div class="label" style="color: var(--text-muted); font-size: 0.8125rem;">Facturas registradas</div>
+            </div>
+            <div class="activity-stat" style="text-align: center; padding: 1rem; background: var(--bg-input); border-radius: var(--radius-md);">
+                <div class="number" id="stats-hoy-hora" style="font-size: 2rem; font-weight: 700;">--:--</div>
+                <div class="label" style="color: var(--text-muted); font-size: 0.8125rem;">Última actualización</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Attention List Section -->
+    <div class="info-section" style="border-left: 4px solid var(--danger);">
+        <div class="section-header">
+            <div class="section-title">
+                <div class="section-title-icon">⚠️</div>
+                <span style="color: var(--danger); font-weight: 700;">Atención Requerida (Cobros Vencidos)</span>
+            </div>
+        </div>
+        <div id="attention-list">
+            <div class="loading" style="text-align: center; padding: 2rem;">
+                <p>Analizando cartera...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Risk of Aging Debts Section -->
+    <div class="info-section">
+        <div class="section-header">
+            <div class="section-title">
+                <div class="section-title-icon">📈</div>
+                <span>Antigüedad de la Deuda y Riesgo</span>
+            </div>
+        </div>
+        <div id="aging-buckets">
+            <div class="loading" style="text-align: center; padding: 2rem;">
+                <p>Calculando antigüedad de cartera...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Collection Queue Section -->
+    <div class="info-section">
+        <div class="section-header">
+            <div class="section-title">
+                <div class="section-title-icon">🤝</div>
+                <span>Clientes Pendientes (Cola de Cobro Priorizada)</span>
+            </div>
+        </div>
+        <div id="collection-queue">
+            <div class="loading" style="text-align: center; padding: 2rem;">
+                <p>Ordenando deudores por prioridad...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // Formatear fecha actual
+        const dateEl = document.getElementById('current-date');
+        if (dateEl) {
+            const now = new Date();
+            dateEl.textContent = now.toLocaleDateString('es-CO', {
+                weekday: 'long', 
+                day: 'numeric', 
+                month: 'long', 
+                year: 'numeric'
+            });
+        }
+
+        // Inicializar dashboard si la función existe
+        if (typeof initDashboard === 'function') {
+            initDashboard();
+        }
+
+        // Cargar Flujo de Caja del Día
+        cargarFlujoCajaDashboard();
+        
+        // Registrar detector para el badge del Tablero
+        configurarBadgeTablero();
+    });
+
+    async function cargarFlujoCajaDashboard() {
+        try {
+            const res = await API.getFlujoCaja();
+            if (!res.success) return;
+            const d = res.data;
+            const entradas = d.ventas_total + d.abonos_total;
+            const salidas = d.pagos_proveedores_total + d.gastos_total;
+            const neto = d.efectivo_neto;
+
+            const entradasEl = document.getElementById('dash-caja-entradas');
+            const salidasEl  = document.getElementById('dash-caja-salidas');
+            const netoEl     = document.getElementById('dash-caja-neto');
+
+            if (entradasEl) entradasEl.textContent = formatCurrency(entradas);
+            if (salidasEl)  salidasEl.textContent  = formatCurrency(salidas);
+            if (netoEl) {
+                netoEl.textContent = formatCurrency(neto);
+                netoEl.style.color = neto >= 0 ? 'var(--success)' : 'var(--danger)';
+            }
+        } catch(e) {
+            console.warn('No se pudo cargar flujo de caja en dashboard:', e);
+        }
+    }
+
+    function toggleTableroAnalitico() {
+        const app = document.getElementById('tablero-analitico-app');
+        const card = document.getElementById('btn-app-tablero');
+        
+        if (app.style.display === 'none') {
+            app.style.display = 'block';
+            app.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            if (card) card.style.transform = 'scale(0.95)';
+        } else {
+            app.style.display = 'none';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            if (card) card.style.transform = '';
+        }
+    }
+
+    async function configurarBadgeTablero() {
+        try {
+            const stats = await API.getDashboard();
+            if (stats && stats.success) {
+                const clientesSinAbono = stats.data.clientes_sin_abonos || [];
+                if (clientesSinAbono.length > 0) {
+                    const badge = document.getElementById('badge-atencion');
+                    if (badge) {
+                        badge.style.display = 'block';
+                    }
+                }
+            }
+        } catch(e) {
+            console.warn('No se pudo cargar stats para badge del tablero:', e);
+        }
+    }
+</script>
+{% endblock %}

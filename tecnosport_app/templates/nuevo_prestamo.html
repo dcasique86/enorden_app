@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+
+{% block title %}Nueva compra - {{ nombre_tienda }}{% endblock %}
+
+{% block main_class %}container-small{% endblock %}
+
+{% block extra_head %}
+<style>
+    .container-small {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-view">
+<div class="page-body-scroll">
+<div class="section">
+    <div class="section-header">
+        <h2 class="section-title">
+            <span class="section-title-icon" style="background: rgba(139, 92, 246, 0.15); color: var(--primary-light);">📋</span>
+            Nueva compra
+        </h2>
+    </div>
+
+    <!-- Selector de tipo de operación -->
+    <div id="tipo-operacion-selector" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1.5rem;">
+        <div id="tipo-compra" class="tipo-opcion activo" data-value="COMPRA"
+             style="cursor: pointer; padding: 1.25rem; border-radius: var(--radius-md); text-align: center; background: var(--bg-card-hover); border: 2px solid var(--primary-light); transition: all 0.2s;">
+            <div style="font-size: 2rem; margin-bottom: 0.5rem;">🛍️</div>
+            <div style="font-weight: 700; font-size: 1rem;">Compra</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">El cliente adquiere la mercancía inmediatamente.</div>
+        </div>
+        <div id="tipo-prestamo" class="tipo-opcion" data-value="PRESTAMO_MERCANCIA"
+             style="cursor: pointer; padding: 1.25rem; border-radius: var(--radius-md); text-align: center; background: var(--bg-card); border: 2px solid var(--border-color); transition: all 0.2s;">
+            <div style="font-size: 2rem; margin-bottom: 0.5rem;">📦</div>
+            <div style="font-weight: 700; font-size: 1rem;">Préstamo de mercancía</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">La mercancía se entrega durante un máximo de 48 horas.</div>
+        </div>
+    </div>
+
+    <div id="form-container">
+        <form id="form-prestamo">
+        <input type="hidden" id="tipo-operacion-input" value="COMPRA">
+
+        <!-- Selección de cliente -->
+        <div class="form-group">
+            <label class="form-label">Cliente</label>
+            <div class="search-box" style="margin-bottom: 0;">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="buscar-cliente" class="search-input" placeholder="Buscar cliente..." autocomplete="off">
+                <div id="resultados-busqueda" class="search-results"></div>
+            </div>
+            <div id="cliente-seleccionado" style="display: none; margin-top: 0.75rem;"></div>
+        </div>
+
+        <!-- Monto -->
+        <div class="form-group">
+            <label class="form-label">Monto *</label>
+            <input type="text" id="monto" inputmode="numeric" class="form-input" placeholder="0" required>
+        </div>
+
+        <!-- Descripción -->
+        <div class="form-group">
+            <label class="form-label">Descripción / Artículos</label>
+            <textarea id="descripcion" class="form-input" rows="4" placeholder="Escribe cada artículo en una línea, ej:&#10;2 camisetas Nike&#10;1 tenis Adidas&#10;3 gorras"></textarea>
+        </div>
+
+        <!-- Info -->
+        <div style="background: var(--bg-input); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.5rem; border: 1px solid var(--border-color);">
+            <p class="text-secondary" style="font-size: 0.875rem;">
+                📅 Fecha: <strong id="fecha-actual"></strong>
+            </p>
+            <p class="text-muted" style="font-size: 0.875rem; margin-top: 0.5rem;" id="info-adicional">
+                ℹ️ La operación se sumará a la deuda del cliente.
+            </p>
+        </div>
+
+        <!-- Botones -->
+        <div style="display: flex; gap: 1rem;">
+            <a href="/" class="btn btn-secondary" style="flex: 1;">Cancelar</a>
+            <button type="submit" class="btn btn-primary" style="flex: 1;" id="btn-submit-operacion">
+                🛍️ Registrar Compra
+            </button>
+        </div>
+    </form>
+    </div>
+</div>
+</div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.body.dataset.page = 'nuevo-prestamo';
+
+    // Fecha actual
+    document.getElementById('fecha-actual').textContent = new Date().toLocaleDateString('es-CO', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+
+    // --- Pre-selección de cliente vía ?cliente=ID ---
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    async function preseleccionarClienteDesdeURL() {
+        const params = new URLSearchParams(window.location.search);
+        const clienteId = params.get('cliente');
+        if (!clienteId) return;
+
+        try {
+            const r = await fetch(`/api/clientes/${clienteId}`);
+            const data = await r.json();
+            if (!data.success || !data.data) return;
+
+            const c = data.data;
+            clienteSeleccionado = { id: c.id, nombre: c.nombre };
+
+            buscarInput.style.display = 'none';
+            resultadosDiv.style.display = 'none';
+            clienteSeleccionadoDiv.innerHTML = `
+                <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; background: var(--bg-card-hover); border-radius: var(--radius-md); border-color: var(--primary); border: 1px solid var(--primary);">
+                    <span>✅ <strong>${escapeHtml(c.nombre)}</strong></span>
+                    <button type="button" class="btn btn-sm btn-secondary" id="btn-cambiar-cliente">Cambiar</button>
+                </div>`;
+            clienteSeleccionadoDiv.style.display = 'block';
+
+            document.getElementById('btn-cambiar-cliente')?.addEventListener('click', () => {
+                clienteSeleccionado = null;
+                clienteSeleccionadoDiv.style.display = 'none';
+                buscarInput.style.display = 'block';
+                buscarInput.value = '';
+                buscarInput.focus();
+            });
+
+            document.getElementById('monto')?.focus();
+        } catch (e) {
+            console.error('Error preseleccionando cliente:', e);
+        }
+    }
+
+    preseleccionarClienteDesdeURL();
+    const tipoInput = document.getElementById('tipo-operacion-input');
+    const opciones = document.querySelectorAll('.tipo-opcion');
+    const btnSubmit = document.getElementById('btn-submit-operacion');
+    const infoExtra = document.getElementById('info-adicional');
+
+    function seleccionarTipo(valor) {
+        opciones.forEach(el => {
+            const v = el.dataset.value;
+            if (v === valor) {
+                el.style.background = 'var(--bg-card-hover)';
+                el.style.borderColor = 'var(--primary-light)';
+                el.classList.add('activo');
+            } else {
+                el.style.background = 'var(--bg-card)';
+                el.style.borderColor = 'var(--border-color)';
+                el.classList.remove('activo');
+            }
+        });
+        tipoInput.value = valor;
+
+        if (valor === 'PRESTAMO_MERCANCIA') {
+            btnSubmit.innerHTML = '📦 Registrar Préstamo de mercancía';
+            btnSubmit.className = 'btn btn-danger';
+            infoExtra.innerHTML = '⏳ La mercancía debe devolverse en máximo 48 horas. Si no se devuelve a tiempo, se convertirá automáticamente en compra.';
+        } else {
+            btnSubmit.innerHTML = '🛍️ Registrar Compra';
+            btnSubmit.className = 'btn btn-primary';
+            infoExtra.innerHTML = 'ℹ️ La compra se sumará a la deuda del cliente.';
+        }
+    }
+
+    opciones.forEach(el => {
+        el.addEventListener('click', () => seleccionarTipo(el.dataset.value));
+    });
+
+    // --- Búsqueda de cliente (idéntica a dashboard) ---
+    const buscarInput = document.getElementById('buscar-cliente');
+    const resultadosDiv = document.getElementById('resultados-busqueda');
+    const clienteSeleccionadoDiv = document.getElementById('cliente-seleccionado');
+    let clienteSeleccionado = null;
+    let timeoutBusqueda = null;
+
+    buscarInput.addEventListener('input', function() {
+        clearTimeout(timeoutBusqueda);
+        const q = this.value.trim();
+        if (q.length < 2) { resultadosDiv.style.display = 'none'; return; }
+        timeoutBusqueda = setTimeout(async () => {
+            try {
+                const r = await fetch(`/api/clientes/buscar?q=${encodeURIComponent(q)}`);
+                const data = await r.json();
+                const clientes = data.data || [];
+                if (!clientes.length) {
+                    resultadosDiv.innerHTML = '<div class="search-result-item disabled">Sin resultados</div>';
+                    resultadosDiv.style.display = 'block';
+                    return;
+                }
+                resultadosDiv.innerHTML = clientes.map(c => `
+                    <div class="search-result-item" data-id="${c.id}" data-nombre="${c.nombre}">
+                        <strong>${c.nombre}</strong>
+                        <small style="color: var(--text-muted); margin-left: 0.5rem;">Deuda: $${parseFloat(c.deuda || 0).toLocaleString('es-CO')}</small>
+                    </div>
+                `).join('');
+                resultadosDiv.style.display = 'block';
+                resultadosDiv.querySelectorAll('.search-result-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        clienteSeleccionado = { id: item.dataset.id, nombre: item.dataset.nombre };
+                        clienteSeleccionadoDiv.innerHTML = `
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; background: var(--bg-card-hover); border-radius: var(--radius-md);">
+                                <span>✅ <strong>${item.dataset.nombre}</strong></span>
+                                <button type="button" class="btn btn-sm btn-secondary" id="btn-cambiar-cliente">Cambiar</button>
+                            </div>`;
+                        clienteSeleccionadoDiv.style.display = 'block';
+                        buscarInput.style.display = 'none';
+                        resultadosDiv.style.display = 'none';
+                        document.getElementById('btn-cambiar-cliente')?.addEventListener('click', () => {
+                            clienteSeleccionado = null;
+                            clienteSeleccionadoDiv.style.display = 'none';
+                            buscarInput.style.display = 'block';
+                            buscarInput.value = '';
+                            buscarInput.focus();
+                        });
+                    });
+                });
+            } catch (e) {
+                resultadosDiv.innerHTML = '<div class="search-result-item disabled">Error de búsqueda</div>';
+                resultadosDiv.style.display = 'block';
+            }
+        }, 300);
+    });
+
+    document.addEventListener('click', e => {
+        if (!e.target.closest('#resultados-busqueda') && !e.target.closest('#buscar-cliente')) {
+            resultadosDiv.style.display = 'none';
+        }
+    });
+
+    // --- Submit ---
+    document.getElementById('form-prestamo').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        if (!clienteSeleccionado) { alert('Selecciona un cliente'); return; }
+
+        const monto = parseCurrencyInput(document.getElementById('monto').value);
+        if (!monto || monto <= 0) { alert('Ingresa un monto válido'); return; }
+
+        const descripcion = document.getElementById('descripcion').value.trim();
+        const tipoOp = tipoInput.value;
+
+        const payload = {
+            cliente_id: clienteSeleccionado.id,
+            tipo: 'prestamo',
+            descripcion: descripcion || `${tipoOp === 'PRESTAMO_MERCANCIA' ? 'Préstamo de mercancía' : 'Compra'} - ${clienteSeleccionado.nombre}`,
+            monto: monto,
+            tipo_operacion: tipoOp,
+        };
+
+        try {
+            const res = await fetch('/api/movimientos', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (data.success) {
+                const msg = data.message || (tipoOp === 'PRESTAMO_MERCANCIA' ? 'Préstamo de mercancía registrado' : 'Compra registrada');
+                window.location.href = '/?success=' + encodeURIComponent(msg);
+            } else {
+                alert('Error: ' + (data.detail || 'Error desconocido'));
+            }
+        } catch (e) {
+            alert('Error de conexión: ' + e.message);
+        }
+    });
+    // Ejecutar pre-selección al final (después de definir variables)
+    preseleccionarClienteDesdeURL();
+</script>
+{% endblock %}

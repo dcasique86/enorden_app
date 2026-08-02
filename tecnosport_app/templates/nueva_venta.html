@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Registrar Venta - {{ nombre_tienda }}{% endblock %}
+
+{% block main_class %}container-small{% endblock %}
+
+{% block extra_head %}
+<style>
+    .container-small {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+</style>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.body.dataset.page = 'nueva-venta';
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="page-view">
+<div class="page-body-scroll">
+<div class="section">
+    <div class="section-header">
+        <h2 class="section-title">
+            <span class="section-title-icon">$</span>
+            Registrar Venta
+        </h2>
+    </div>
+
+    <div id="form-container">
+        <form id="form-venta">
+            <div class="form-group">
+                <label class="form-label">Producto</label>
+                <div class="search-box" style="margin-bottom: 0;">
+                    <span class="search-icon">BUS</span>
+                    <input type="text" id="buscar-producto" class="search-input" placeholder="Buscar producto..." autocomplete="off">
+                    <div id="resultados-busqueda" class="search-results"></div>
+                </div>
+                <div id="producto-seleccionado" style="display: none; margin-top: 0.75rem;"></div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Cantidad *</label>
+                <input type="number" id="cantidad" class="form-input" min="1" step="1" value="1" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Precio unitario</label>
+                <input type="text" id="precio-unitario" inputmode="numeric" class="form-input" placeholder="Usa el precio del producto">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Nota</label>
+                <input type="text" id="nota" class="form-input" placeholder="Ej: venta mostrador, efectivo...">
+            </div>
+
+            <div style="background: var(--bg-input); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.5rem; border: 1px solid var(--border-color);">
+                <p class="text-secondary" style="font-size: 0.875rem;">
+                    Total estimado: <strong id="venta-total">$0</strong>
+                </p>
+                <p class="text-muted" style="font-size: 0.875rem; margin-top: 0.5rem;">
+                    La venta descuenta automaticamente el stock del producto.
+                </p>
+            </div>
+
+            <div style="display: flex; gap: 1rem;">
+                <a href="/inventario" class="btn btn-secondary" style="flex: 1;">Cancelar</a>
+                <button type="submit" class="btn btn-success" style="flex: 1;">Registrar Venta</button>
+            </div>
+        </form>
+    </div>
+</div>
+</div>
+</div>
+{% endblock %}
