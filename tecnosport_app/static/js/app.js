@@ -2302,6 +2302,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Inicializar utilidades globales (disponibles en todas las páginas)
     AppSwitcher.init();
     GlobalSearch.init();
+    Notificaciones.init();
 
     // Inicializar navegación SPA
     SPA.init();
@@ -2559,6 +2560,101 @@ const ReporteProveedor = {
             ${tablaFacturas}
             ${tablaPagos}
         `;
+    }
+};
+
+// ==================== NOTIFICACIONES (CAMPAÑA) ====================
+
+const Notificaciones = {
+    items: [],
+
+    async init() {
+        const toggle = document.getElementById('notif-toggle');
+        if (!toggle) return;
+
+        toggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggle();
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.notif-wrap')) this.cerrar();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') this.cerrar();
+        });
+
+        await this.cargar();
+        setInterval(() => this.cargar(), 60000);
+    },
+
+    toggle() {
+        const panel = document.getElementById('notif-panel');
+        if (!panel) return;
+        const abrir = panel.style.display === 'none';
+        panel.style.display = abrir ? 'block' : 'none';
+        if (abrir && this.items.length === 0) this.cargar();
+    },
+
+    cerrar() {
+        const panel = document.getElementById('notif-panel');
+        if (panel) panel.style.display = 'none';
+    },
+
+    async cargar() {
+        try {
+            const res = await fetch('/api/notificaciones');
+            const json = await res.json();
+            if (!json.success) return;
+            this.items = json.data || [];
+            this.render();
+        } catch (e) {
+            console.error('Error cargando notificaciones:', e);
+        }
+    },
+
+    render() {
+        const wrap = document.querySelector('.notif-wrap');
+        const count = this.items.length;
+
+        const badge = document.getElementById('notif-count');
+        if (badge) {
+            badge.textContent = count > 99 ? '99+' : count;
+            badge.style.display = count > 0 ? 'flex' : 'none';
+        }
+        if (wrap) wrap.classList.toggle('has-notif', count > 0);
+
+        const list = document.getElementById('notif-list');
+        if (!list) return;
+
+        if (count === 0) {
+            list.innerHTML = '<div class="notif-empty">No hay notificaciones pendientes 🎉</div>';
+            return;
+        }
+
+        list.innerHTML = this.items.map((n, i) => `
+            <div class="notif-item" data-url="${n.url || ''}" role="button" tabindex="0">
+                <div class="notif-item-icon">${n.icono || '🔔'}</div>
+                <div class="notif-item-body">
+                    <div class="notif-item-title">${escapeHtml(n.titulo || '')}</div>
+                    ${n.detalle ? `<div class="notif-item-detail">${escapeHtml(n.detalle)}</div>` : ''}
+                </div>
+            </div>`).join('');
+
+        list.querySelectorAll('.notif-item').forEach((el) => {
+            const abrir = () => {
+                const url = el.dataset.url;
+                this.cerrar();
+                if (url && url !== window.location.pathname) {
+                    SPA.navigate(url);
+                }
+            };
+            el.addEventListener('click', abrir);
+            el.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') abrir();
+            });
+        });
     }
 };
 

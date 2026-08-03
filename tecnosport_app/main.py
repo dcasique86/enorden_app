@@ -20,7 +20,7 @@ if sys.platform == "win32":
         sys.stderr = open(os.devnull, "w", encoding="utf-8")
     elif hasattr(sys.stderr, "reconfigure"):
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Depends
 from fastapi.staticfiles import StaticFiles
@@ -43,7 +43,8 @@ from schemas import (
     ApiResponseSimple,
     GastoCreate, GastoRead, ApiResponseGasto, ApiResponseGastosList,
     FlujoCajaResumen, ApiResponseFlujoCaja,
-    DevolucionClienteCreate, DevolucionProveedorCreate, DevolucionRead, ApiResponseDevolucion, ApiResponseDevolucionesList
+    DevolucionClienteCreate, DevolucionProveedorCreate, DevolucionRead, ApiResponseDevolucion, ApiResponseDevolucionesList,
+    TelegramUserCreate
 )
 from repository import (
     ClienteRepository, ProveedorRepository, GastoRepository,
@@ -830,6 +831,75 @@ async def api_get_backup_estado():
     try:
         from scheduler import backup_scheduler
         return {"success": True, "data": backup_scheduler.estado()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== API: NOTIFICACIONES ====================
+
+@app.get("/api/notificaciones")
+async def api_get_notificaciones():
+    """Notificaciones de atención: cobros prioritarios, stock bajo y backups."""
+    try:
+        notificaciones = []
+
+        # 1. Cobros con prioridad alta (>= 31 días sin abonar)
+        try:
+            stats = db.get_dashboard_stats()
+            contados = 0
+            for c in stats.get("cola_cobro", []):
+                if c.get("prioridad") != "alta" or contados >= 5:
+                    continue
+                dias = c.get("dias_sin_abonar")
+                notificaciones.append({
+                    "tipo": "cobro",
+                    "icono": "💰",
+                    "titulo": f"{c['nombre']} — {dias} días sin abonar",
+                    "detalle": f"Saldo pendiente: ${c['saldo']:,.0f}",
+                    "url": f"/cliente/{c['id']}"
+                })
+                contados += 1
+        except Exception as e:
+            print(f"Error en notificaciones (cobros): {e}")
+
+        # 2. Productos con stock bajo
+        try:
+            inv = db.get_dashboard_stats_inventario()
+            for p in inv.get("stock_bajo", [])[:10]:
+                notificaciones.append({
+                    "tipo": "stock",
+                    "icono": "📦",
+                    "titulo": f"Stock bajo: {p['nombre']}",
+                    "detalle": f"Quedan {p['stock']} unidades (mínimo {p['stock_minimo']})",
+                    "url": "/inventario"
+                })
+        except Exception as e:
+            print(f"Error en notificaciones (stock): {e}")
+
+        # 3. Copia de seguridad reciente
+        try:
+            backups = db.get_backups()
+            if backups:
+                ultimo = datetime.strptime(backups[0]["fecha"], "%Y-%m-%d %H:%M:%S")
+                if (datetime.now() - ultimo) > timedelta(hours=24):
+                    notificaciones.append({
+                        "tipo": "backup",
+                        "icono": "💾",
+                        "titulo": "Copia de seguridad pendiente",
+                        "detalle": f"Última copia: {backups[0]['fecha']} (hace más de 24 h)",
+                        "url": "/configuracion"
+                    })
+            else:
+                notificaciones.append({
+                    "tipo": "backup",
+                    "icono": "💾",
+                    "titulo": "Sin copias de seguridad",
+                    "detalle": "Crea tu primera copia de seguridad",
+                    "url": "/configuracion"
+                })
+        except Exception as e:
+            print(f"Error en notificaciones (backup): {e}")
+
+        return {"success": True, "data": notificaciones}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1688,6 +1758,149 @@ async def api_update_configuracion(config: ConfigUpdate):
         return {"success": True, "message": "Configuración actualizada"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== API: TELEGRAM ====================
+
+class TelegramConfigUpdate(BaseModel):
+    token: Optional[str] = None
+    admin_id: Optional[str] = None
+
+class TelegramUsuarioUpdate(BaseModel):
+    rol: Optional[str] = None
+    activo: Optional[bool] = None
+
+_ROLES_TELEGRAM = ("super_admin", "admin", "operador")
+
+def _count_super_admins_activos() -> int:
+    """Cuenta super_admins activos para no dejar el bot sin administrador."""
+    from repository import telegram_user_repo
+    usuarios = telegram_user_repo.get_all()
+    return sum(1 for u in usuarios if u["rol"] == "super_admin" and u["activo"])
+
+@app.get("/api/telegram/estado")
+async def api_get_telegram_estado():
+    """Estado del bot de Telegram para Configuración (no expone el token)."""
+    try:
+        import telegram_bot
+        estado = telegram_bot.get_estado_publico()
+        estado["username"] = await telegram_bot.obtener_username_bot()
+        return {"success": True, "data": estado}
+    except Exception as e:
+        return {"success": False, "mensaje": str(e)}
+
+@app.put("/api/telegram/config")
+async def api_update_telegram_config(config: TelegramConfigUpdate):
+    """Guarda credenciales del bot y lo reinicia automáticamente."""
+    try:
+        updates = {}
+        if config.token is not None:
+            token = config.token.strip()
+            if not token or token in ("your_telegram_bot_token_here", "TU_TELEGRAM_BOT_TOKEN_AQUI"):
+                return {"success": False, "mensaje": "El token no es válido"}
+            updates['telegram_token'] = token
+        if config.admin_id is not None:
+            admin = config.admin_id.strip()
+            try:
+                int(admin)
+            except ValueError:
+                return {"success": False, "mensaje": "El Admin ID debe ser un número"}
+            updates['telegram_admin_id'] = admin
+        if not updates:
+            return {"success": False, "mensaje": "No hay cambios para guardar"}
+
+        if not _set_config_full(updates):
+            return {"success": False, "mensaje": "Error guardando la configuración"}
+
+        try:
+            startup_manager.reiniciar_telegram_bot()
+        except Exception as e:
+            print(f"Error reiniciando el bot: {e}")
+
+        return {"success": True, "message": "Credenciales guardadas y bot reiniciado"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/telegram/prueba")
+async def api_telegram_mensaje_prueba():
+    """Envía un mensaje de prueba al Admin ID del bot."""
+    try:
+        import telegram_bot
+        resultado = await telegram_bot.enviar_mensaje_prueba()
+        return {"success": resultado.get("ok", False), "mensaje": resultado.get("mensaje", "")}
+    except Exception as e:
+        return {"success": False, "mensaje": str(e)}
+
+@app.post("/api/telegram/reiniciar")
+async def api_telegram_reiniciar():
+    """Reinicia el hilo del bot sin reiniciar la app."""
+    try:
+        startup_manager.reiniciar_telegram_bot()
+        return {"success": True, "message": "Bot reiniciado"}
+    except Exception as e:
+        return {"success": False, "mensaje": str(e)}
+
+@app.get("/api/telegram/usuarios")
+def api_get_telegram_usuarios():
+    """Lista los usuarios autorizados del bot de Telegram."""
+    try:
+        from repository import telegram_user_repo
+        return {"success": True, "data": telegram_user_repo.get_all()}
+    except Exception as e:
+        return {"success": False, "mensaje": str(e)}
+
+@app.post("/api/telegram/usuarios")
+def api_create_telegram_usuario(usuario: TelegramUserCreate):
+    """Registra un nuevo usuario autorizado del bot."""
+    try:
+        from repository import telegram_user_repo
+        if telegram_user_repo.get_by_telegram_id(usuario.telegram_id):
+            return {"success": False, "mensaje": "Ese ID ya está registrado"}
+        if usuario.rol not in _ROLES_TELEGRAM:
+            return {"success": False, "mensaje": "Rol inválido"}
+        creado = telegram_user_repo.create(usuario)
+        return {"success": True, "data": creado}
+    except Exception as e:
+        return {"success": False, "mensaje": str(e)}
+
+@app.patch("/api/telegram/usuarios/{telegram_id}")
+def api_update_telegram_usuario(telegram_id: int, update: TelegramUsuarioUpdate):
+    """Cambia rol o estado activo de un usuario del bot."""
+    try:
+        from repository import telegram_user_repo
+        existente = telegram_user_repo.get_by_telegram_id(telegram_id)
+        if not existente:
+            return {"success": False, "mensaje": "El usuario no existe"}
+
+        if update.rol is not None:
+            if update.rol not in _ROLES_TELEGRAM:
+                return {"success": False, "mensaje": "Rol inválido"}
+            if existente["rol"] == "super_admin" and update.rol != "super_admin" and _count_super_admins_activos() <= 1:
+                return {"success": False, "mensaje": "No se puede quitar el rol al último super_admin"}
+            telegram_user_repo.update_rol(telegram_id, update.rol)
+
+        if update.activo is not None:
+            if existente["rol"] == "super_admin" and not update.activo and _count_super_admins_activos() <= 1:
+                return {"success": False, "mensaje": "No se puede desactivar al último super_admin"}
+            telegram_user_repo.set_activo(telegram_id, update.activo)
+
+        return {"success": True, "data": telegram_user_repo.get_by_telegram_id(telegram_id)}
+    except Exception as e:
+        return {"success": False, "mensaje": str(e)}
+
+@app.delete("/api/telegram/usuarios/{telegram_id}")
+def api_delete_telegram_usuario(telegram_id: int):
+    """Elimina un usuario autorizado del bot."""
+    try:
+        from repository import telegram_user_repo
+        existente = telegram_user_repo.get_by_telegram_id(telegram_id)
+        if not existente:
+            return {"success": False, "mensaje": "El usuario no existe"}
+        if existente["rol"] == "super_admin" and _count_super_admins_activos() <= 1:
+            return {"success": False, "mensaje": "No se puede eliminar al último super_admin"}
+        telegram_user_repo.delete(telegram_id)
+        return {"success": True, "message": "Usuario eliminado"}
+    except Exception as e:
+        return {"success": False, "mensaje": str(e)}
 
 @app.post("/api/mantenimiento/recalcular")
 async def api_recalcular_saldos():

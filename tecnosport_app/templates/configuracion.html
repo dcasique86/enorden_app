@@ -397,6 +397,89 @@
     </div>
 </div>
 
+<!-- Integración de Telegram -->
+<div class="config-card" style="border-color: rgba(37, 163, 233, 0.25);">
+    <div class="config-card-header">
+        <div class="config-card-icon" style="background: rgba(37, 163, 233, 0.12);">🤖</div>
+        <h2 class="config-card-title">Integración de Telegram</h2>
+    </div>
+
+    <div class="config-info-row" style="display: flex; justify-content: space-between; padding: 0.75rem 0; border-bottom: 1px solid var(--border-color);">
+        <span class="config-info-label">Estado del bot</span>
+        <span id="telegram-estado" class="config-info-value">Cargando...</span>
+    </div>
+    <div class="config-info-row" style="display: flex; justify-content: space-between; padding: 0.75rem 0; border-bottom: 1px solid var(--border-color);">
+        <span class="config-info-label">Usuario del bot</span>
+        <span id="telegram-username" class="config-info-value muted">-</span>
+    </div>
+    <div class="config-info-row" style="display: flex; justify-content: space-between; padding: 0.75rem 0; border-bottom: 1px solid var(--border-color);">
+        <span class="config-info-label">Admin ID</span>
+        <span id="telegram-admin" class="config-info-value muted">-</span>
+    </div>
+    <div class="config-info-row" style="display: flex; justify-content: space-between; padding: 0.75rem 0;">
+        <span class="config-info-label">Configuración del token</span>
+        <span id="telegram-fuente" class="config-info-value muted">-</span>
+    </div>
+    <div id="telegram-motivo" style="display: none; margin: 0.5rem 0 0.75rem; padding: 0.75rem; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-secondary);"></div>
+    <div style="display: flex; gap: 0.75rem; margin-top: 0.75rem; flex-wrap: wrap;">
+        <button class="config-btn" onclick="telegramEnviarPrueba()">📨 Enviar mensaje de prueba</button>
+        <button class="config-btn" onclick="telegramReiniciar()">🔄 Reiniciar bot</button>
+        <span id="telegram-accion-msg" class="save-indicator" style="display: none; align-self: center;"></span>
+    </div>
+
+    <div style="margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--border-color);">
+        <h3 style="font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem;">Credenciales</h3>
+        <p style="font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 1rem;">Deja un campo vacío para conservar el valor actual. Al guardar, el bot se reinicia automáticamente para aplicar los cambios.</p>
+        <div class="config-form-group">
+            <label class="config-label">Token del bot (de @BotFather)</label>
+            <input type="password" id="telegram-token" class="config-input" placeholder="··· (conservar el actual)" autocomplete="off">
+        </div>
+        <div class="config-form-group">
+            <label class="config-label">Admin ID (tu ID de Telegram)</label>
+            <input type="text" id="telegram-admin-id" class="config-input" placeholder="Ej: 123456789 (vacío = conservar)">
+        </div>
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <button class="config-btn primary" onclick="telegramGuardarConfig()">💾 Guardar y reiniciar bot</button>
+            <span id="telegram-save-msg" class="save-indicator" style="display: none; align-self: center;">✓ Guardado</span>
+        </div>
+    </div>
+
+    <div style="margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--border-color);">
+        <h3 style="font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem;">Usuarios autorizados</h3>
+        <p style="font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 1rem;">Personas que pueden usar el bot por chat. Roles: <code>super_admin</code>, <code>admin</code>, <code>operador</code>.</p>
+
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
+            <input type="number" id="telegram-user-id" class="config-input" placeholder="ID de Telegram" style="flex: 1; min-width: 130px;">
+            <input type="text" id="telegram-user-nombre" class="config-input" placeholder="Nombre" style="flex: 2; min-width: 150px;">
+            <select id="telegram-user-rol" class="config-input" style="flex: 1; min-width: 110px;">
+                <option value="operador">operador</option>
+                <option value="admin">admin</option>
+                <option value="super_admin">super_admin</option>
+            </select>
+            <button class="config-btn primary" onclick="telegramAgregarUsuario()">+ Agregar</button>
+        </div>
+
+        <div style="overflow-x: auto;">
+            <table class="tg-table" style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+                <thead>
+                    <tr style="text-align: left; color: var(--text-muted);">
+                        <th style="padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border-color);">ID</th>
+                        <th style="padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border-color);">Nombre</th>
+                        <th style="padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border-color);">Rol</th>
+                        <th style="padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border-color);">Estado</th>
+                        <th style="padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border-color);">Registro</th>
+                        <th style="padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border-color);"></th>
+                    </tr>
+                </thead>
+                <tbody id="telegram-users-tbody">
+                    <tr><td colspan="6" style="padding: 1rem; text-align: center; color: var(--text-muted);">Cargando...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="telegram-users-msg" style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-secondary); display: none;"></div>
+    </div>
+</div>
+
 <!-- Mensajes de WhatsApp -->
 <div class="config-card">
     <div class="config-card-header">
@@ -544,8 +627,11 @@
         loadBackups();
         loadBackupEstado();
         loadWaStats();
+        loadTelegramEstado();
+        loadTelegramUsuarios();
         // Mantener actualizada la próxima copia mientras la página esté abierta
         setInterval(loadBackupEstado, 60000);
+        setInterval(loadTelegramEstado, 60000);
     });
 
     // Funciones de configuración (mantenidas del original)
@@ -843,6 +929,237 @@
         const container = document.getElementById('mantenimiento-resultado');
         container.innerHTML = `<div style="background: var(--bg-input); padding: 1rem; border-radius: var(--radius-md);"><strong>${titulo}</strong><br>${contenido}</div>`;
         container.style.display = 'block';
+    }
+
+    // ── Integración de Telegram ─────────────────────────────────
+    function telegramMsg(el, texto, ok) {
+        const node = document.getElementById(el);
+        node.textContent = texto;
+        node.style.display = 'inline-flex';
+        node.style.color = ok ? 'var(--success)' : 'var(--danger)';
+        setTimeout(() => node.style.display = 'none', 4000);
+    }
+
+    async function loadTelegramEstado() {
+        const estadoEl = document.getElementById('telegram-estado');
+        try {
+            const response = await fetch('/api/telegram/estado');
+            const result = await response.json();
+            if (!result.success) {
+                estadoEl.textContent = 'Error';
+                return;
+            }
+            const estado = result.data;
+            if (estado.estado === 'activo') {
+                estadoEl.textContent = '✅ Activo';
+                estadoEl.style.color = 'var(--success)';
+            } else {
+                estadoEl.textContent = '⚠️ Desactivado';
+                estadoEl.style.color = 'var(--error)';
+            }
+            document.getElementById('telegram-username').textContent = estado.username ? '@' + estado.username : 'No disponible';
+            document.getElementById('telegram-admin').textContent = estado.admin_id_enmascarado || '-';
+            const fuentes = { config: 'Desde Configuración', env: 'Desde archivo .env', ninguno: 'No configurado' };
+            document.getElementById('telegram-fuente').textContent = fuentes[estado.fuente_token] || '-';
+            const motivo = document.getElementById('telegram-motivo');
+            if (estado.estado !== 'activo' && estado.mensaje) {
+                motivo.textContent = '⚠️ ' + estado.mensaje;
+                motivo.style.display = 'block';
+            } else {
+                motivo.style.display = 'none';
+            }
+        } catch (error) { console.error('Error:', error); }
+    }
+
+    async function telegramEnviarPrueba() {
+        try {
+            const response = await fetch('/api/telegram/prueba', { method: 'POST' });
+            const result = await response.json();
+            telegramMsg('telegram-accion-msg', result.success ? '✅ Mensaje de prueba enviado' : ('❌ ' + (result.mensaje || 'Error')), result.success);
+        } catch (error) {
+            telegramMsg('telegram-accion-msg', '❌ Error de conexión', false);
+            console.error('Error:', error);
+        }
+    }
+
+    async function telegramReiniciar() {
+        try {
+            const response = await fetch('/api/telegram/reiniciar', { method: 'POST' });
+            const result = await response.json();
+            telegramMsg('telegram-accion-msg', result.success ? '🔄 Bot reiniciado' : ('❌ ' + (result.mensaje || 'Error')), result.success);
+            setTimeout(loadTelegramEstado, 1500);
+        } catch (error) {
+            telegramMsg('telegram-accion-msg', '❌ Error de conexión', false);
+            console.error('Error:', error);
+        }
+    }
+
+    async function telegramGuardarConfig() {
+        const token = document.getElementById('telegram-token').value.trim();
+        const adminId = document.getElementById('telegram-admin-id').value.trim();
+        if (!token && !adminId) {
+            telegramMsg('telegram-save-msg', '⚠️ Escribe un token o Admin ID nuevo', false);
+            return;
+        }
+        try {
+            const body = {};
+            if (token) body.token = token;
+            if (adminId) body.admin_id = adminId;
+            const response = await fetch('/api/telegram/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const result = await response.json();
+            if (result.success) {
+                telegramMsg('telegram-save-msg', '✓ Guardado y bot reiniciado', true);
+                document.getElementById('telegram-token').value = '';
+                document.getElementById('telegram-admin-id').value = '';
+                setTimeout(loadTelegramEstado, 2000);
+            } else {
+                telegramMsg('telegram-save-msg', '❌ ' + (result.mensaje || 'Error'), false);
+            }
+        } catch (error) {
+            telegramMsg('telegram-save-msg', '❌ Error de conexión', false);
+            console.error('Error:', error);
+        }
+    }
+
+    async function loadTelegramUsuarios() {
+        const tbody = document.getElementById('telegram-users-tbody');
+        try {
+            const response = await fetch('/api/telegram/usuarios');
+            const result = await response.json();
+            if (!result.success) {
+                tbody.innerHTML = '<tr><td colspan="6" style="padding: 1rem; text-align: center; color: var(--text-muted);">Error al cargar usuarios</td></tr>';
+                return;
+            }
+            const usuarios = result.data || [];
+            if (usuarios.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="padding: 1rem; text-align: center; color: var(--text-muted);">No hay usuarios registrados</td></tr>';
+                return;
+            }
+            tbody.innerHTML = usuarios.map(u => {
+                const activo = u.activo;
+                const badge = activo
+                    ? '<span style="color: var(--success); font-weight: 600;">🟢 Activo</span>'
+                    : '<span style="color: var(--error); font-weight: 600;">🔴 Inactivo</span>';
+                const rolSel = `<select class="config-input" style="padding: 0.25rem 0.5rem; font-size: 0.8125rem; width: auto;" onchange="telegramCambiarRol(${u.telegram_id}, this.value)">
+                    <option value="operador" ${u.rol === 'operador' ? 'selected' : ''}>operador</option>
+                    <option value="admin" ${u.rol === 'admin' ? 'selected' : ''}>admin</option>
+                    <option value="super_admin" ${u.rol === 'super_admin' ? 'selected' : ''}>super_admin</option>
+                </select>`;
+                const fecha = u.fecha_registro ? new Date(u.fecha_registro).toLocaleDateString() : '-';
+                return `<tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 0.5rem 0.75rem;"><code>${u.telegram_id}</code></td>
+                    <td style="padding: 0.5rem 0.75rem;">${u.nombre}</td>
+                    <td style="padding: 0.5rem 0.75rem;">${rolSel}</td>
+                    <td style="padding: 0.5rem 0.75rem;">
+                        <label class="config-switch" style="position: relative; display: inline-block; width: 40px; height: 22px; margin: 0;">
+                            <input type="checkbox" ${activo ? 'checked' : ''} style="opacity: 0; width: 0; height: 0;" onchange="telegramToggleActivo(${u.telegram_id}, this.checked)">
+                            <span style="position: absolute; inset: 0; background: ${activo ? '#059669' : '#ccc'}; border-radius: 22px; transition: background 0.2s;"></span>
+                            <span style="position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; background: #fff; border-radius: 50%; transition: transform 0.2s; transform: ${activo ? 'translateX(18px)' : 'translateX(0)'};"></span>
+                        </label>
+                    </td>
+                    <td style="padding: 0.5rem 0.75rem; color: var(--text-muted);">${fecha}</td>
+                    <td style="padding: 0.5rem 0.75rem; text-align: right;">
+                        <button class="config-btn btn-sm" style="padding: 0.35rem 0.75rem; font-size: 0.8125rem;" onclick="telegramEliminarUsuario(${u.telegram_id})">🗑️</button>
+                    </td>
+                </tr>`;
+            }).join('');
+        } catch (error) { console.error('Error:', error); }
+    }
+
+    async function telegramAgregarUsuario() {
+        const id = parseInt(document.getElementById('telegram-user-id').value, 10);
+        const nombre = document.getElementById('telegram-user-nombre').value.trim();
+        const rol = document.getElementById('telegram-user-rol').value;
+        const msgEl = document.getElementById('telegram-users-msg');
+        if (!id || isNaN(id)) {
+            msgEl.textContent = '⚠️ Ingresa un ID de Telegram válido';
+            msgEl.style.display = 'block';
+            msgEl.style.color = 'var(--warning)';
+            return;
+        }
+        if (!nombre) {
+            msgEl.textContent = '⚠️ Ingresa el nombre';
+            msgEl.style.display = 'block';
+            msgEl.style.color = 'var(--warning)';
+            return;
+        }
+        try {
+            const response = await fetch('/api/telegram/usuarios', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ telegram_id: id, nombre: nombre, rol: rol })
+            });
+            const result = await response.json();
+            msgEl.style.display = 'block';
+            if (result.success) {
+                msgEl.style.color = 'var(--success)';
+                msgEl.textContent = '✓ Usuario agregado';
+                document.getElementById('telegram-user-id').value = '';
+                document.getElementById('telegram-user-nombre').value = '';
+                loadTelegramUsuarios();
+            } else {
+                msgEl.style.color = 'var(--danger)';
+                msgEl.textContent = '❌ ' + (result.mensaje || 'Error');
+            }
+        } catch (error) { console.error('Error:', error); }
+    }
+
+    async function telegramCambiarRol(id, rol) {
+        try {
+            const response = await fetch(`/api/telegram/usuarios/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rol: rol })
+            });
+            const result = await response.json();
+            if (!result.success) {
+                const msgEl = document.getElementById('telegram-users-msg');
+                msgEl.textContent = '❌ ' + (result.mensaje || 'Error');
+                msgEl.style.display = 'block';
+                msgEl.style.color = 'var(--danger)';
+                loadTelegramUsuarios();
+            }
+        } catch (error) { console.error('Error:', error); }
+    }
+
+    async function telegramToggleActivo(id, activo) {
+        try {
+            const response = await fetch(`/api/telegram/usuarios/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ activo: activo })
+            });
+            const result = await response.json();
+            if (!result.success) {
+                const msgEl = document.getElementById('telegram-users-msg');
+                msgEl.textContent = '❌ ' + (result.mensaje || 'Error');
+                msgEl.style.display = 'block';
+                msgEl.style.color = 'var(--danger)';
+            }
+            loadTelegramUsuarios();
+        } catch (error) { console.error('Error:', error); }
+    }
+
+    async function telegramEliminarUsuario(id) {
+        if (!confirm(`¿Eliminar al usuario ${id} del bot?`)) return;
+        try {
+            const response = await fetch(`/api/telegram/usuarios/${id}`, { method: 'DELETE' });
+            const result = await response.json();
+            const msgEl = document.getElementById('telegram-users-msg');
+            msgEl.style.display = 'block';
+            if (result.success) {
+                msgEl.style.color = 'var(--success)';
+                msgEl.textContent = '✓ Usuario eliminado';
+            } else {
+                msgEl.style.color = 'var(--danger)';
+                msgEl.textContent = '❌ ' + (result.mensaje || 'Error');
+            }
+            loadTelegramUsuarios();
+        } catch (error) { console.error('Error:', error); }
     }
 </script>
 {% endblock %}

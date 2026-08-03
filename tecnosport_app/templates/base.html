@@ -19,7 +19,7 @@
         })();
     </script>
 
-    <link rel="stylesheet" href="/static/css/styles.css?v=2.7">
+    <link rel="stylesheet" href="/static/css/styles.css?v=2.9">
     {% block extra_head %}{% endblock %}
 </head>
 <body class="theme-transition" data-page="{{ page_id }}">
@@ -88,7 +88,16 @@
                             {% elif page_id == 'configuracion' %}Ajustes
                             {% else %}ERP{% endif %}
                         </span>
-                        <span class="notif-badge" id="badge-atencion" title="Atención requerida" style="display:none;">🔔</span>
+                        <div class="notif-wrap">
+                            <button id="notif-toggle" class="notif-btn" title="Notificaciones" aria-label="Notificaciones">
+                                <span class="notif-badge">🔔</span>
+                                <span id="notif-count" class="notif-count" style="display:none;">0</span>
+                            </button>
+                            <div id="notif-panel" class="notif-panel" style="display:none;">
+                                <div class="notif-panel-header">Notificaciones</div>
+                                <div id="notif-list" class="notif-list"></div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="assistant-search-container">
@@ -184,7 +193,7 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
-    <script src="/static/js/app.js?v=2.26"></script></script>
+    <script src="/static/js/app.js?v=2.27"></script></script>
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>

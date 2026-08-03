@@ -10,6 +10,7 @@ Usa el patrón repositorio existente en EnOrden.
 import os
 import sys
 import logging
+import asyncio
 from functools import wraps
 from decimal import Decimal
 from typing import Any, Optional
@@ -63,7 +64,7 @@ from uuid import uuid4
 
 
 
-# Leer y validar credenciales de variables de entorno
+# Leer credenciales de variables de entorno (fallback). La tabla config tiene prioridad.
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_ADMIN_ID_RAW = os.getenv("TELEGRAM_ADMIN_ID")
 TELEGRAM_ADMIN_ID = None
@@ -71,6 +72,39 @@ TELEGRAM_ADMIN_ID = None
 _application = None
 _bot_thread = None
 _bot_running = False
+_bot_loop = None
+
+_PLACEHOLDER_VALUES = ("your_telegram_bot_token_here", "TU_TELEGRAM_BOT_TOKEN_AQUI",
+                       "your_telegram_admin_id_here", "TU_TELEGRAM_ID_AQUI")
+
+
+def _resolver_credenciales():
+    """Resuelve token y Admin ID dando prioridad a la tabla config y fallback a .env.
+    Retorna (token, admin_id_raw)."""
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    admin_raw = os.getenv("TELEGRAM_ADMIN_ID")
+    try:
+        token_cfg = db.get_config("telegram_token", "").strip()
+        admin_cfg = db.get_config("telegram_admin_id", "").strip()
+        if token_cfg:
+            token = token_cfg
+        if admin_cfg:
+            admin_raw = admin_cfg
+    except Exception:
+        pass
+    return token, admin_raw
+
+
+def _fuente_token() -> str:
+    """Indica de dónde sale el token: 'config', 'env' o 'ninguno'."""
+    try:
+        if db.get_config("telegram_token", "").strip():
+            return "config"
+    except Exception:
+        pass
+    if os.getenv("TELEGRAM_BOT_TOKEN"):
+        return "env"
+    return "ninguno"
 
 
 def validar_configuracion() -> dict:
@@ -81,15 +115,16 @@ def validar_configuracion() -> dict:
         return {"ok": False, "mensaje": "python-telegram-bot no instalado", "codigo": "LIB_MISSING"}
     if not HTTPX_OK:
         return {"ok": False, "mensaje": "httpx no instalado", "codigo": "HTTPX_MISSING"}
-    if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN in ("your_telegram_bot_token_here", "TU_TELEGRAM_BOT_TOKEN_AQUI"):
-        return {"ok": False, "mensaje": "TELEGRAM_BOT_TOKEN no configurado en .env", "codigo": "TOKEN_MISSING"}
-    if not TELEGRAM_ADMIN_ID_RAW or TELEGRAM_ADMIN_ID_RAW in ("your_telegram_admin_id_here", "TU_TELEGRAM_ID_AQUI"):
-        return {"ok": False, "mensaje": "TELEGRAM_ADMIN_ID no configurado en .env", "codigo": "ADMIN_MISSING"}
-    global TELEGRAM_ADMIN_ID
+    global TELEGRAM_BOT_TOKEN, TELEGRAM_ADMIN_ID_RAW, TELEGRAM_ADMIN_ID
+    TELEGRAM_BOT_TOKEN, TELEGRAM_ADMIN_ID_RAW = _resolver_credenciales()
+    if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN in _PLACEHOLDER_VALUES:
+        return {"ok": False, "mensaje": "Token del bot no configurado", "codigo": "TOKEN_MISSING"}
+    if not TELEGRAM_ADMIN_ID_RAW or TELEGRAM_ADMIN_ID_RAW in _PLACEHOLDER_VALUES:
+        return {"ok": False, "mensaje": "Admin ID no configurado", "codigo": "ADMIN_MISSING"}
     try:
         TELEGRAM_ADMIN_ID = int(TELEGRAM_ADMIN_ID_RAW)
     except ValueError:
-        return {"ok": False, "mensaje": f"TELEGRAM_ADMIN_ID '{TELEGRAM_ADMIN_ID_RAW}' no es un número válido", "codigo": "ADMIN_INVALID"}
+        return {"ok": False, "mensaje": f"Admin ID '{TELEGRAM_ADMIN_ID_RAW}' no es un número válido", "codigo": "ADMIN_INVALID"}
     return {"ok": True, "mensaje": "Configuración válida", "codigo": "OK", "admin_id": TELEGRAM_ADMIN_ID}
 
 # ==================== HELPERS ====================
@@ -1611,12 +1646,48 @@ def _registrar_handlers(application):
     application.add_handler(CommandHandler("permisos", permisos_command))
 
 
+def _ciclo_bot(application):
+    """Réplica del ciclo run_polling de PTB sin manejo de señales.
+    Usa un event loop propio para poder detenerlo desde otro hilo con call_soon_threadsafe."""
+    global _bot_loop
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    _bot_loop = loop
+    try:
+        loop.run_until_complete(application.initialize())
+        if application.post_init:
+            loop.run_until_complete(application.post_init(application))
+        loop.run_until_complete(application.updater.start_polling())
+        loop.run_until_complete(application.start())
+        loop.run_forever()
+    except (KeyboardInterrupt, SystemExit):
+        logger.debug("Bot recibió señal de detención")
+    finally:
+        try:
+            if application.updater.running:
+                loop.run_until_complete(application.updater.stop())
+            if application.running:
+                loop.run_until_complete(application.stop())
+                if application.post_stop:
+                    loop.run_until_complete(application.post_stop(application))
+            loop.run_until_complete(application.shutdown())
+            if application.post_shutdown:
+                loop.run_until_complete(application.post_shutdown(application))
+        finally:
+            loop.close()
+            _bot_loop = None
+
+
 def iniciar_bot() -> dict:
     """Inicializa y ejecuta el bot en modo Long Polling (bloqueante).
     Retorna {'ok': bool, 'mensaje': str}.
     """
     global _application, _bot_running
     logger.info("Iniciando EnOrden Telegram Bot...")
+
+    config = validar_configuracion()
+    if not config.get("ok"):
+        return {"ok": False, "mensaje": config.get("mensaje", "Configuración inválida")}
 
     _ensure_super_admin()
 
@@ -1633,7 +1704,7 @@ def iniciar_bot() -> dict:
         print(f"   Administrador ID: {TELEGRAM_ADMIN_ID}")
         print("="*50 + "\n")
 
-        application.run_polling()
+        _ciclo_bot(application)
         _bot_running = False
         return {"ok": True, "mensaje": "Bot finalizado normalmente"}
     except Exception as e:
@@ -1643,15 +1714,68 @@ def iniciar_bot() -> dict:
 
 
 def detener_bot():
-    """Detiene el bot si está en ejecución."""
-    global _application, _bot_running
+    """Detiene el bot si está en ejecución. Seguro desde cualquier hilo."""
+    global _application, _bot_running, _bot_loop
     if _application:
         try:
-            _application.stop()
+            loop = _bot_loop
+            if loop is not None and loop.is_running():
+                loop.call_soon_threadsafe(loop.stop)
         except Exception:
             pass
         _application = None
     _bot_running = False
+
+
+def get_estado_publico() -> dict:
+    """Estado público del bot para mostrar en Configuración. No expone el token."""
+    validacion = validar_configuracion()
+    admin_id = validacion.get("admin_id")
+    admin_masked = None
+    if admin_id is not None:
+        s = str(admin_id)
+        admin_masked = ("···" + s[-4:]) if len(s) > 4 else s
+
+    return {
+        "bot_activo": bool(_bot_running),
+        "estado": "activo" if (validacion.get("ok") and _bot_running) else "desactivado",
+        "codigo": validacion.get("codigo", "OK"),
+        "mensaje": validacion.get("mensaje", ""),
+        "token_configurado": bool(TELEGRAM_BOT_TOKEN and TELEGRAM_BOT_TOKEN not in _PLACEHOLDER_VALUES),
+        "admin_configurado": bool(TELEGRAM_ADMIN_ID_RAW and TELEGRAM_ADMIN_ID_RAW not in _PLACEHOLDER_VALUES),
+        "admin_id_enmascarado": admin_masked,
+        "fuente_token": _fuente_token(),
+    }
+
+
+async def obtener_username_bot():
+    """Retorna el @username del bot vía getMe, o None si falla."""
+    validacion = validar_configuracion()
+    if not validacion.get("ok"):
+        return None
+    try:
+        from telegram import Bot
+        bot = Bot(token=TELEGRAM_BOT_TOKEN)
+        me = await bot.get_me()
+        return getattr(me, "username", None)
+    except Exception as e:
+        logger.warning(f"Error obteniendo username del bot: {e}")
+        return None
+
+
+async def enviar_mensaje_prueba(texto: str = "✅ Bot conectado desde Configuración de EnOrden") -> dict:
+    """Envía un mensaje de prueba al Admin ID. Retorna {'ok': bool, 'mensaje': str}."""
+    validacion = validar_configuracion()
+    if not validacion.get("ok"):
+        return {"ok": False, "mensaje": validacion.get("mensaje", "Configuración inválida")}
+    try:
+        from telegram import Bot
+        bot = Bot(token=TELEGRAM_BOT_TOKEN)
+        await bot.send_message(chat_id=TELEGRAM_ADMIN_ID, text=texto)
+        return {"ok": True, "mensaje": "Mensaje de prueba enviado"}
+    except Exception as e:
+        logger.error(f"Error enviando mensaje de prueba: {e}")
+        return {"ok": False, "mensaje": str(e)}
 
 
 def main():

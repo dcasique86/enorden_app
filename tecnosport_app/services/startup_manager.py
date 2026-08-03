@@ -112,6 +112,18 @@ class StartupManager:
             except Exception as e:
                 logger.warning(f"Error al detener el bot: {e}")
 
+    def reiniciar_telegram_bot(self):
+        """Detiene y relanza el bot de Telegram para aplicar cambios de configuración."""
+        self.detener_telegram_bot()
+        if self._bot_thread:
+            self._bot_thread.join(timeout=5)
+            self._bot_thread = None
+        self._iniciar_bot_interno()
+        if not self._bot_monitor_thread or not self._bot_monitor_thread.is_alive():
+            self._bot_monitor_thread = threading.Thread(target=self._monitorear_bot, daemon=True)
+            self._bot_monitor_thread.start()
+        logger.info("Bot de Telegram reiniciado")
+
     # ── Scheduler ─────────────────────────────────────────────────
 
     def iniciar_scheduler(self):
