@@ -194,6 +194,15 @@ async def cliente_detalle_page(request: Request, cliente_id: str):
         "page_id": "clientes"
     })
 
+@app.get("/reporte-cliente/{cliente_id}", response_class=HTMLResponse)
+async def reporte_cliente_page(request: Request, cliente_id: str):
+    """Página de reporte detallado de un cliente"""
+    return templates.TemplateResponse("reporte_cliente.html", {
+        "request": request,
+        "nombre_tienda": get_nombre_tienda(),
+        "page_id": "clientes"
+    })
+
 @app.get("/nuevo-prestamo", response_class=HTMLResponse)
 async def nuevo_prestamo_page(request: Request):
     """Página para registrar nuevo préstamo"""
@@ -245,6 +254,15 @@ async def proveedores_page(request: Request):
 async def proveedor_detalle_page(request: Request, proveedor_id: str):
     """Página de detalle de proveedor"""
     return templates.TemplateResponse("proveedor_detalle.html", {
+        "request": request,
+        "nombre_tienda": get_nombre_tienda(),
+        "page_id": "proveedores"
+    })
+
+@app.get("/reporte-proveedor/{proveedor_id}", response_class=HTMLResponse)
+async def reporte_proveedor_page(request: Request, proveedor_id: str):
+    """Página de reporte detallado de un proveedor"""
+    return templates.TemplateResponse("reporte_proveedor.html", {
         "request": request,
         "nombre_tienda": get_nombre_tienda(),
         "page_id": "proveedores"
@@ -759,6 +777,33 @@ async def api_get_historial(cliente_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/reporte/cliente/{cliente_id}")
+async def api_get_reporte_cliente(cliente_id: str, desde: Optional[str] = None, hasta: Optional[str] = None):
+    """Obtiene reporte detallado de un cliente (ventas y abonos) con filtro de fechas"""
+    try:
+        reporte = db.get_reporte_cliente(cliente_id, desde, hasta)
+        if not reporte:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+        return {"success": True, "data": reporte, "rango": {"desde": desde, "hasta": hasta}}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/reporte/proveedor/{proveedor_id}")
+async def api_get_reporte_proveedor(proveedor_id: str, desde: Optional[str] = None, hasta: Optional[str] = None):
+    """Obtiene reporte detallado de un proveedor (facturas y pagos) con filtro de fechas"""
+    try:
+        reporte = db.get_reporte_proveedor(proveedor_id, desde, hasta)
+        if not reporte:
+            raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+        return {"success": True, "data": reporte, "rango": {"desde": desde, "hasta": hasta}}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/dashboard")
 async def api_get_dashboard():
     """Obtiene estadísticas del dashboard"""
@@ -779,11 +824,21 @@ async def api_get_backups():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/backups/estado")
+async def api_get_backup_estado():
+    """Estado del programador de backups automáticos"""
+    try:
+        from scheduler import backup_scheduler
+        return {"success": True, "data": backup_scheduler.estado()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/backups")
 async def api_crear_backup():
     """Crea un backup manual"""
     try:
-        backup_path = db.crear_backup()
+        mantener = int(db.get_config("backup_mantener", "30") or "30")
+        backup_path = db.crear_backup(mantener=mantener)
         return {
             "success": True, 
             "message": "Backup creado exitosamente",
@@ -1422,10 +1477,16 @@ class ConfigUpdate(BaseModel):
     whatsapp_template_abono: Optional[str] = None
     whatsapp_template_prestamo: Optional[str] = None
     whatsapp_template_recordatorio: Optional[str] = None
+    whatsapp_template_factura: Optional[str] = None
+    whatsapp_template_pago: Optional[str] = None
     qr_pago_activo: Optional[bool] = None
     qr_pago_nequi: Optional[str] = None
     qr_pago_davi: Optional[str] = None
     qr_pago_bancolombia: Optional[str] = None
+    backup_activo: Optional[bool] = None
+    backup_hora: Optional[str] = None
+    backup_frecuencia: Optional[str] = None
+    backup_mantener: Optional[int] = None
 
 # Funciones auxiliares para configuración (sin modificar database.py)
 def _get_config_full() -> Dict[str, Any]:
@@ -1446,10 +1507,16 @@ def _get_config_full() -> Dict[str, Any]:
             "whatsapp_template_abono": config.get("whatsapp_template_abono", ""),
             "whatsapp_template_prestamo": config.get("whatsapp_template_prestamo", ""),
             "whatsapp_template_recordatorio": config.get("whatsapp_template_recordatorio", ""),
+            "whatsapp_template_factura": config.get("whatsapp_template_factura", ""),
+            "whatsapp_template_pago": config.get("whatsapp_template_pago", ""),
             "qr_pago_activo": config.get("qr_pago_activo", "false").lower() == "true",
             "qr_pago_nequi": config.get("qr_pago_nequi", ""),
             "qr_pago_davi": config.get("qr_pago_davi", ""),
-            "qr_pago_bancolombia": config.get("qr_pago_bancolombia", "")
+            "qr_pago_bancolombia": config.get("qr_pago_bancolombia", ""),
+            "backup_activo": config.get("backup_activo", "true").lower() == "true",
+            "backup_hora": config.get("backup_hora", "23:00"),
+            "backup_frecuencia": config.get("backup_frecuencia", "diario"),
+            "backup_mantener": int(config.get("backup_mantener", "30"))
         }
     except Exception as e:
         print(f"Error obteniendo config: {e}")
@@ -1460,10 +1527,16 @@ def _get_config_full() -> Dict[str, Any]:
             "whatsapp_template_abono": "",
             "whatsapp_template_prestamo": "",
             "whatsapp_template_recordatorio": "",
+            "whatsapp_template_factura": "",
+            "whatsapp_template_pago": "",
             "qr_pago_activo": False,
             "qr_pago_nequi": "",
             "qr_pago_davi": "",
-            "qr_pago_bancolombia": ""
+            "qr_pago_bancolombia": "",
+            "backup_activo": True,
+            "backup_hora": "23:00",
+            "backup_frecuencia": "diario",
+            "backup_mantener": 30
         }
     finally:
         if conn:
@@ -1580,6 +1653,10 @@ async def api_update_configuracion(config: ConfigUpdate):
             updates['whatsapp_template_prestamo'] = config.whatsapp_template_prestamo
         if config.whatsapp_template_recordatorio is not None:
             updates['whatsapp_template_recordatorio'] = config.whatsapp_template_recordatorio
+        if config.whatsapp_template_factura is not None:
+            updates['whatsapp_template_factura'] = config.whatsapp_template_factura
+        if config.whatsapp_template_pago is not None:
+            updates['whatsapp_template_pago'] = config.whatsapp_template_pago
         if config.qr_pago_activo is not None:
             updates['qr_pago_activo'] = str(config.qr_pago_activo).lower()
         if config.qr_pago_nequi is not None:
@@ -1588,9 +1665,25 @@ async def api_update_configuracion(config: ConfigUpdate):
             updates['qr_pago_davi'] = config.qr_pago_davi
         if config.qr_pago_bancolombia is not None:
             updates['qr_pago_bancolombia'] = config.qr_pago_bancolombia
+        if config.backup_activo is not None:
+            updates['backup_activo'] = str(config.backup_activo).lower()
+        if config.backup_hora is not None:
+            updates['backup_hora'] = config.backup_hora
+        if config.backup_frecuencia is not None:
+            updates['backup_frecuencia'] = config.backup_frecuencia
+        if config.backup_mantener is not None:
+            updates['backup_mantener'] = str(max(1, config.backup_mantener))
         
         if updates:
             _set_config_full(updates)
+        
+        # Si cambió la programación de backups, recalcular próxima copia
+        if any(k in updates for k in ('backup_activo', 'backup_hora', 'backup_frecuencia', 'backup_mantener')):
+            try:
+                from scheduler import backup_scheduler
+                backup_scheduler.reconfigurar()
+            except Exception:
+                pass
         
         return {"success": True, "message": "Configuración actualizada"}
     except Exception as e:

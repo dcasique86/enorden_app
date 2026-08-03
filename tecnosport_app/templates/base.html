@@ -19,7 +19,7 @@
         })();
     </script>
 
-    <link rel="stylesheet" href="/static/css/styles.css?v=2.4">
+    <link rel="stylesheet" href="/static/css/styles.css?v=2.7">
     {% block extra_head %}{% endblock %}
 </head>
 <body class="theme-transition" data-page="{{ page_id }}">
@@ -27,17 +27,17 @@
 
         <!-- Sidebar EN ORDEN -->
         <aside class="app-sidebar">
-            <div class="sidebar-brand">
+            <a href="/" class="sidebar-brand" data-spa title="Volver al inicio" style="text-decoration:none; cursor:pointer;">
                 <div class="sidebar-logo">🏪</div>
                 <div class="sidebar-brand-text">
                     <div class="sidebar-title">EN ORDEN</div>
                     <div class="sidebar-subtitle">{{ nombre_tienda }}</div>
                 </div>
-            </div>
+            </a>
 
             <nav class="sidebar-nav">
                 <a href="/" class="sidebar-link {% if page_id == 'dashboard' %}active{% endif %}" data-spa>
-                    <span class="sidebar-icon">📊</span><span class="sidebar-label">Dashboard</span>
+                    <span class="sidebar-icon">📊</span><span class="sidebar-label">Panel Principal</span>
                 </a>
                 <a href="/clientes" class="sidebar-link {% if page_id == 'clientes' %}active{% endif %}" data-spa>
                     <span class="sidebar-icon">👥</span><span class="sidebar-label">Clientes</span>
@@ -184,7 +184,7 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
-    <script src="/static/js/app.js?v=2.17"></script>
+    <script src="/static/js/app.js?v=2.26"></script></script>
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>

@@ -21,15 +21,33 @@ const Theme = {
         toggleBtn.addEventListener('click', () => {
             const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
             const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-            
-            document.documentElement.setAttribute('data-theme', newTheme);
-            localStorage.setItem('theme', newTheme);
-            
-            // Efecto sutil de rotación al hacer clic
-            toggleBtn.style.transform = 'rotate(360deg)';
-            setTimeout(() => {
-                toggleBtn.style.transform = '';
-            }, 300);
+
+            const applyTheme = () => {
+                document.documentElement.setAttribute('data-theme', newTheme);
+                localStorage.setItem('theme', newTheme);
+            };
+
+            const rotateButton = () => {
+                toggleBtn.style.transform = 'rotate(360deg)';
+                setTimeout(() => {
+                    toggleBtn.style.transform = '';
+                }, 300);
+            };
+
+            // Cross-fade unificado (View Transitions API).
+            // Se bloquean las transiciones individuales de cada elemento durante el
+            // cambio para que el tema no "cambie por partes", solo el fundido global.
+            if (document.startViewTransition) {
+                document.documentElement.classList.add('vt-theme');
+                const vt = document.startViewTransition(applyTheme);
+                vt.finished.finally(() => {
+                    document.documentElement.classList.remove('vt-theme');
+                    rotateButton();
+                });
+            } else {
+                applyTheme();
+                rotateButton();
+            }
         });
     }
 };
@@ -1169,6 +1187,7 @@ const ClienteDetalle = {
                         <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;">
                             <a href="/nuevo-prestamo?cliente=${cliente.id}" class="btn btn-primary btn-sm" style="flex:1;padding:0.5rem;font-size:0.8rem;">🛍️ Venta</a>
                             <a href="/nuevo-abono?cliente=${cliente.id}" class="btn btn-success btn-sm" style="flex:1;padding:0.5rem;font-size:0.8rem;">💰 Abono</a>
+                            <a href="/reporte-cliente/${cliente.id}" class="btn btn-secondary btn-sm" style="flex:1;padding:0.5rem;font-size:0.8rem;">📄 Reporte</a>
                             ${tieneTelefono && tieneDeuda ? `
                                 <button onclick="WhatsApp.enviarRecordatorio('${cliente.telefono}', '${escapeHtml(cliente.nombre)}', ${resumen.saldo}, '')" class="btn btn-sm" style="background:#25D366;color:white;padding:0.5rem;font-size:0.8rem;">📱 Recordar</button>
                             ` : ''}
@@ -2288,6 +2307,261 @@ document.addEventListener('DOMContentLoaded', () => {
     SPA.init();
 });
 
+// ==================== REPORTES POR ENTIDAD ====================
+
+const ReporteCliente = {
+    id: null,
+
+    async init() {
+        this.id = document.body.dataset.clienteId;
+        if (!this.id) return;
+        // Rango por defecto: primer día del mes hasta hoy
+        const hoy = new Date();
+        const primero = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+        const d = document.getElementById('reporte-desde');
+        const h = document.getElementById('reporte-hasta');
+        if (d && !d.value) d.value = primero.toISOString().split('T')[0];
+        if (h && !h.value) h.value = hoy.toISOString().split('T')[0];
+        await this.cargar();
+    },
+
+    async cargar() {
+        const container = document.getElementById('reporte');
+        if (!container) return;
+        const desde = document.getElementById('reporte-desde').value;
+        const hasta = document.getElementById('reporte-hasta').value;
+        container.innerHTML = `<div class="loading" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3rem;"><div class="spinner"></div><p style="margin-top:1rem;">Cargando reporte...</p></div>`;
+        try {
+            const params = new URLSearchParams();
+            if (desde) params.set('desde', desde);
+            if (hasta) params.set('hasta', hasta);
+            const res = await fetch(`/api/reporte/cliente/${this.id}?${params.toString()}`);
+            const json = await res.json();
+            if (!json.success) throw new Error(json.detail || 'Error al obtener el reporte');
+            this.render(json.data, json.rango);
+        } catch (e) {
+            container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-title">Error al cargar el reporte</div><div class="empty-state-text">${escapeHtml(e.message)}</div></div>`;
+        }
+    },
+
+    limpiarFiltros() {
+        const d = document.getElementById('reporte-desde');
+        const h = document.getElementById('reporte-hasta');
+        if (d) d.value = '';
+        if (h) h.value = '';
+        this.cargar();
+    },
+
+    render(data, rango) {
+        const container = document.getElementById('reporte');
+        const entidad = data.entidad;
+        const r = data.resumen;
+        const tiendaEl = document.getElementById('reporte-tienda');
+        const tienda = tiendaEl ? tiendaEl.textContent : 'Negocio';
+        const periodo = (rango.desde || rango.hasta)
+            ? `Del ${rango.desde || 'inicio'} al ${rango.hasta || 'hoy'}`
+            : 'Todo el historial';
+        const fechaGen = new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        const saldoPeriodoClass = r.saldo_periodo < 0 ? 'texto-negativo' : 'texto-positivo';
+
+        const filaAbono = (m) => `
+            <tr>
+                <td>${formatDate(m.fecha)}</td>
+                <td>${escapeHtml(m.descripcion || '-')}</td>
+                <td class="monto texto-positivo">${formatCurrency(m.monto)}</td>
+            </tr>`;
+        const filaVenta = (m) => `
+            <tr>
+                <td>${formatDate(m.fecha)}</td>
+                <td>${escapeHtml(m.descripcion || '-')}</td>
+                <td class="monto">${formatCurrency(m.monto)}</td>
+            </tr>`;
+
+        const tablaVentas = `
+            <div class="reporte-seccion">🛍️ Ventas / Compras</div>
+            <table class="reporte-tabla">
+                <thead><tr><th>Fecha</th><th>Descripción</th><th class="monto">Monto</th></tr></thead>
+                <tbody>
+                    ${data.ventas.length === 0 ? `<tr><td colspan="3" style="color:var(--text-muted);">Sin ventas en este periodo.</td></tr>` : data.ventas.map(filaVenta).join('')}
+                </tbody>
+                ${data.ventas.length > 0 ? `<tfoot><tr class="total"><td colspan="2">Total ventas / compras</td><td class="monto">${formatCurrency(r.total_ventas)}</td></tr></tfoot>` : ''}
+            </table>`;
+
+        const tablaAbonos = `
+            <div class="reporte-seccion">💰 Abonos</div>
+            <table class="reporte-tabla">
+                <thead><tr><th>Fecha</th><th>Descripción</th><th class="monto">Monto</th></tr></thead>
+                <tbody>
+                    ${data.abonos.length === 0 ? `<tr><td colspan="3" style="color:var(--text-muted);">Sin abonos en este periodo.</td></tr>` : data.abonos.map(filaAbono).join('')}
+                </tbody>
+                ${data.abonos.length > 0 ? `<tfoot><tr class="total"><td colspan="2">Total abonado</td><td class="monto texto-positivo">${formatCurrency(r.total_abonos)}</td></tr></tfoot>` : ''}
+            </table>`;
+
+        container.innerHTML = `
+            <div class="reporte-encabezado">
+                <div>
+                    <div class="reporte-titulo">📄 Reporte de Cliente</div>
+                    <div style="font-weight:700;font-size:1.1rem;margin-top:0.25rem;">${escapeHtml(entidad.nombre)}</div>
+                    ${entidad.telefono ? `<div class="reporte-meta">📱 ${escapeHtml(entidad.telefono)}</div>` : ''}
+                    <div class="reporte-meta">🏪 ${escapeHtml(tienda)}</div>
+                </div>
+                <div style="text-align:right;">
+                    <div class="reporte-meta">Generado: ${fechaGen}</div>
+                    <div class="reporte-meta">Periodo: ${periodo}</div>
+                </div>
+            </div>
+
+            <div class="reporte-card-grid">
+                <div class="reporte-card">
+                    <div class="label">Ventas / Compras</div>
+                    <div class="value">${formatCurrency(r.total_ventas)}</div>
+                </div>
+                <div class="reporte-card">
+                    <div class="label">Abonos</div>
+                    <div class="value">${formatCurrency(r.total_abonos)}</div>
+                </div>
+                <div class="reporte-card">
+                    <div class="label">Movimiento del periodo</div>
+                    <div class="value ${saldoPeriodoClass}">${formatCurrency(r.saldo_periodo)}</div>
+                </div>
+                <div class="reporte-card">
+                    <div class="label">Saldo actual</div>
+                    <div class="value ${r.saldo_actual > 0 ? 'texto-negativo' : ''}">${formatCurrency(r.saldo_actual)}</div>
+                </div>
+            </div>
+
+            ${tablaVentas}
+            ${tablaAbonos}
+        `;
+    }
+};
+
+const ReporteProveedor = {
+    id: null,
+
+    async init() {
+        this.id = document.body.dataset.proveedorId;
+        if (!this.id) return;
+        const hoy = new Date();
+        const primero = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+        const d = document.getElementById('reporte-desde');
+        const h = document.getElementById('reporte-hasta');
+        if (d && !d.value) d.value = primero.toISOString().split('T')[0];
+        if (h && !h.value) h.value = hoy.toISOString().split('T')[0];
+        await this.cargar();
+    },
+
+    async cargar() {
+        const container = document.getElementById('reporte');
+        if (!container) return;
+        const desde = document.getElementById('reporte-desde').value;
+        const hasta = document.getElementById('reporte-hasta').value;
+        container.innerHTML = `<div class="loading" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3rem;"><div class="spinner"></div><p style="margin-top:1rem;">Cargando reporte...</p></div>`;
+        try {
+            const params = new URLSearchParams();
+            if (desde) params.set('desde', desde);
+            if (hasta) params.set('hasta', hasta);
+            const res = await fetch(`/api/reporte/proveedor/${this.id}?${params.toString()}`);
+            const json = await res.json();
+            if (!json.success) throw new Error(json.detail || 'Error al obtener el reporte');
+            this.render(json.data, json.rango);
+        } catch (e) {
+            container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-title">Error al cargar el reporte</div><div class="empty-state-text">${escapeHtml(e.message)}</div></div>`;
+        }
+    },
+
+    limpiarFiltros() {
+        const d = document.getElementById('reporte-desde');
+        const h = document.getElementById('reporte-hasta');
+        if (d) d.value = '';
+        if (h) h.value = '';
+        this.cargar();
+    },
+
+    render(data, rango) {
+        const container = document.getElementById('reporte');
+        const entidad = data.entidad;
+        const r = data.resumen;
+        const tiendaEl = document.getElementById('reporte-tienda');
+        const tienda = tiendaEl ? tiendaEl.textContent : 'Negocio';
+        const periodo = (rango.desde || rango.hasta)
+            ? `Del ${rango.desde || 'inicio'} al ${rango.hasta || 'hoy'}`
+            : 'Todo el historial';
+        const fechaGen = new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        const saldoPeriodoClass = r.saldo_periodo < 0 ? 'texto-positivo' : 'texto-negativo';
+
+        const filaPago = (m) => `
+            <tr>
+                <td>${formatDate(m.fecha)}</td>
+                <td>${escapeHtml(m.descripcion || '-')}</td>
+                <td class="monto texto-positivo">${formatCurrency(m.monto)}</td>
+            </tr>`;
+        const filaFactura = (m) => `
+            <tr>
+                <td>${formatDate(m.fecha)}</td>
+                <td>${escapeHtml(m.descripcion || '-')}</td>
+                <td class="monto">${formatCurrency(m.monto)}</td>
+            </tr>`;
+
+        const tablaFacturas = `
+            <div class="reporte-seccion">📄 Facturas</div>
+            <table class="reporte-tabla">
+                <thead><tr><th>Fecha</th><th>Descripción</th><th class="monto">Monto</th></tr></thead>
+                <tbody>
+                    ${data.facturas.length === 0 ? `<tr><td colspan="3" style="color:var(--text-muted);">Sin facturas en este periodo.</td></tr>` : data.facturas.map(filaFactura).join('')}
+                </tbody>
+                ${data.facturas.length > 0 ? `<tfoot><tr class="total"><td colspan="2">Total facturado</td><td class="monto">${formatCurrency(r.total_facturas)}</td></tr></tfoot>` : ''}
+            </table>`;
+
+        const tablaPagos = `
+            <div class="reporte-seccion">💸 Pagos</div>
+            <table class="reporte-tabla">
+                <thead><tr><th>Fecha</th><th>Descripción</th><th class="monto">Monto</th></tr></thead>
+                <tbody>
+                    ${data.pagos.length === 0 ? `<tr><td colspan="3" style="color:var(--text-muted);">Sin pagos en este periodo.</td></tr>` : data.pagos.map(filaPago).join('')}
+                </tbody>
+                ${data.pagos.length > 0 ? `<tfoot><tr class="total"><td colspan="2">Total pagado</td><td class="monto texto-positivo">${formatCurrency(r.total_pagado)}</td></tr></tfoot>` : ''}
+            </table>`;
+
+        container.innerHTML = `
+            <div class="reporte-encabezado">
+                <div>
+                    <div class="reporte-titulo">📄 Reporte de Proveedor</div>
+                    <div style="font-weight:700;font-size:1.1rem;margin-top:0.25rem;">${escapeHtml(entidad.nombre)}</div>
+                    ${entidad.telefono ? `<div class="reporte-meta">📱 ${escapeHtml(entidad.telefono)}</div>` : ''}
+                    <div class="reporte-meta">🏪 ${escapeHtml(tienda)}</div>
+                </div>
+                <div style="text-align:right;">
+                    <div class="reporte-meta">Generado: ${fechaGen}</div>
+                    <div class="reporte-meta">Periodo: ${periodo}</div>
+                </div>
+            </div>
+
+            <div class="reporte-card-grid">
+                <div class="reporte-card">
+                    <div class="label">Facturado</div>
+                    <div class="value">${formatCurrency(r.total_facturas)}</div>
+                </div>
+                <div class="reporte-card">
+                    <div class="label">Pagado</div>
+                    <div class="value">${formatCurrency(r.total_pagado)}</div>
+                </div>
+                <div class="reporte-card">
+                    <div class="label">Movimiento del periodo</div>
+                    <div class="value ${saldoPeriodoClass}">${formatCurrency(r.saldo_periodo)}</div>
+                </div>
+                <div class="reporte-card">
+                    <div class="label">Saldo actual</div>
+                    <div class="value ${r.saldo_actual > 0 ? 'texto-negativo' : ''}">${formatCurrency(r.saldo_actual)}</div>
+                </div>
+            </div>
+
+            ${tablaFacturas}
+            ${tablaPagos}
+        `;
+    }
+};
+
 // ==================== NAVEGACIÓN SPA (SIN RECARGAR) ====================
 
 const SPA = {
@@ -2418,6 +2692,12 @@ const SPA = {
             case 'nueva-venta':
                 NuevaVenta?.init(new URLSearchParams(window.location.search).get('producto'));
                 break;
+            case 'reporte-cliente':
+                ReporteCliente?.init();
+                break;
+            case 'reporte-proveedor':
+                ReporteProveedor?.init();
+                break;
         }
     }
 };
@@ -2523,7 +2803,8 @@ const WhatsApp = {
                 weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
             }),
             '{tienda}': data.tienda || 'Negocio',
-            '{descripcion}': data.descripcion || ''
+            '{descripcion}': data.descripcion || '',
+            '{metodos_pago}': data.metodos_pago || ''
         };
 
         for (const [key, value] of Object.entries(variables)) {
@@ -2536,15 +2817,28 @@ const WhatsApp = {
     },
     
     /**
+     * Construye el bloque de métodos de pago configurados (Nequi, Bancolombia, Daviplata)
+     */
+    metodosPago(config) {
+        const metodos = [];
+        if (config.qr_pago_nequi) metodos.push(`🏦 *Nequi:* ${config.qr_pago_nequi}`);
+        if (config.qr_pago_bancolombia) metodos.push(`🏦 *Bancolombia:* ${config.qr_pago_bancolombia}`);
+        if (config.qr_pago_davi) metodos.push(`🏦 *Daviplata:* ${config.qr_pago_davi}`);
+        return metodos;
+    },
+
+    /**
      * Genera mensaje para comprobante de abono
      */
     async mensajeAbono(nombre, monto, saldoAnterior, saldoNuevo) {
         const config = await this.getConfig();
         const tienda = await this.getTienda();
+        const metodos = this.metodosPago(config);
+        const bloqueMetodos = metodos.length ? `\n\n💳 Puedes realizar tu pago por:\n${metodos.join('\n')}` : '';
         
         if (config.whatsapp_template_abono) {
             return this.replaceVariables(config.whatsapp_template_abono, {
-                nombre, monto, saldo: saldoNuevo, tienda
+                nombre, monto, saldo: saldoNuevo, tienda, metodos_pago: bloqueMetodos
             });
         }
 
@@ -2555,7 +2849,7 @@ const WhatsApp = {
             year: 'numeric'
         });
         
-        return `Hola ${nombre}, 👋\n\n✅ *ABONO REGISTRADO*\n\n📅 Fecha: ${fecha}\n💰 Abono: ${formatCurrency(monto)}\n📊 Saldo anterior: ${formatCurrency(saldoAnterior)}\n📊 Saldo actual: ${formatCurrency(saldoNuevo)}\n\nGracias por tu pago. 🙏\n\n_${tienda}_`;
+        return `Hola ${nombre}, 👋\n\n✅ *ABONO REGISTRADO*\n\n📅 Fecha: ${fecha}\n💰 Abono: ${formatCurrency(monto)}\n📊 Saldo anterior: ${formatCurrency(saldoAnterior)}\n📊 Saldo actual: ${formatCurrency(saldoNuevo)}\n\nGracias por tu pago. 🙏${bloqueMetodos}\n\n_${tienda}_`;
     },
     
     /**
@@ -2564,10 +2858,12 @@ const WhatsApp = {
     async mensajePrestamo(nombre, descripcion, monto, saldoNuevo) {
         const config = await this.getConfig();
         const tienda = await this.getTienda();
+        const metodos = this.metodosPago(config);
+        const bloqueMetodos = metodos.length ? `\n\n💳 Puedes realizar tu pago por:\n${metodos.join('\n')}` : '';
 
         if (config.whatsapp_template_prestamo) {
             return this.replaceVariables(config.whatsapp_template_prestamo, {
-                nombre, monto, descripcion, saldo: saldoNuevo, tienda
+                nombre, monto, descripcion, saldo: saldoNuevo, tienda, metodos_pago: bloqueMetodos
             });
         }
 
@@ -2587,17 +2883,86 @@ const WhatsApp = {
     async mensajeRecordatorio(nombre, saldo, diasSinAbono) {
         const config = await this.getConfig();
         const tienda = await this.getTienda();
+        const metodos = this.metodosPago(config);
+        const bloqueMetodos = metodos.length ? `\n\n💳 Puedes realizar tu pago por:\n${metodos.join('\n')}` : '';
 
         if (config.whatsapp_template_recordatorio) {
             return this.replaceVariables(config.whatsapp_template_recordatorio, {
                 nombre, saldo, tienda, 
-                descripcion: diasSinAbono ? `Han pasado ${diasSinAbono} días desde tu último abono.` : ''
+                descripcion: diasSinAbono ? `Han pasado ${diasSinAbono} días desde tu último abono.` : '',
+                metodos_pago: bloqueMetodos
             });
         }
 
-        return `Hola ${nombre}, 👋\n\nTe escribimos de *${tienda}* para recordarte que tienes un saldo pendiente de ${formatCurrency(saldo)}.\n\n${diasSinAbono ? `Han pasado ${diasSinAbono} días desde tu último abono.` : ''}\n\nSi deseas hacer un abono o tienes alguna pregunta, no dudes en respondernos. 🙏\n\n¡Gracias por tu preferencia!`;
+        return `Hola ${nombre}, 👋\n\nTe escribimos de *${tienda}* para recordarte que tienes un saldo pendiente de ${formatCurrency(saldo)}.\n\n${diasSinAbono ? `Han pasado ${diasSinAbono} días desde tu último abono.` : ''}\n\nSi deseas hacer un abono o tienes alguna pregunta, no dudes en respondernos. 🙏${bloqueMetodos}\n\n¡Gracias por tu preferencia!`;
     },
     
+    /**
+     * Genera mensaje para comprobante de factura de proveedor
+     */
+    async mensajeFactura(nombre, descripcion, monto, saldoNuevo) {
+        const config = await this.getConfig();
+        const tienda = await this.getTienda();
+
+        if (config.whatsapp_template_factura) {
+            return this.replaceVariables(config.whatsapp_template_factura, {
+                nombre, monto, descripcion, saldo: saldoNuevo, tienda
+            });
+        }
+
+        const fecha = new Date().toLocaleDateString('es-CO', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+        });
+        
+        return `Hola ${nombre}, 👋\n\n📤 *FACTURA REGISTRADA*\n\n📅 Fecha: ${fecha}\n📦 Concepto: ${descripcion || 'No especificado'}\n💰 Valor: ${formatCurrency(monto)}\n📊 Saldo actual: ${formatCurrency(saldoNuevo)}\n\n¡Gracias por el despacho! 🙏\n\n_${tienda}_`;
+    },
+
+    /**
+     * Genera mensaje para comprobante de pago a proveedor
+     */
+    async mensajePagoProveedor(nombre, descripcion, monto, saldoAnterior, saldoNuevo) {
+        const config = await this.getConfig();
+        const tienda = await this.getTienda();
+
+        if (config.whatsapp_template_pago) {
+            return this.replaceVariables(config.whatsapp_template_pago, {
+                nombre, monto, descripcion, saldo: saldoNuevo, tienda
+            });
+        }
+
+        const fecha = new Date().toLocaleDateString('es-CO', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+        });
+        
+        return `Hola ${nombre}, 👋\n\n✅ *PAGO REALIZADO*\n\n📅 Fecha: ${fecha}\n📦 Concepto: ${descripcion || 'No especificado'}\n💰 Monto: ${formatCurrency(monto)}\n📊 Saldo anterior: ${formatCurrency(saldoAnterior)}\n📊 Saldo actual: ${formatCurrency(saldoNuevo)}\n\n¡Gracias por tu atención! 🙏\n\n_${tienda}_`;
+    },
+
+    /**
+     * Envía comprobante de factura o pago de proveedor por WhatsApp
+     */
+    async enviarComprobanteProveedor(tipo, nombre, telefono, monto, descripcion, saldoAnterior, saldoNuevo) {
+        let mensaje;
+        
+        if (tipo === 'pago') {
+            mensaje = await this.mensajePagoProveedor(nombre, descripcion, monto, saldoAnterior, saldoNuevo);
+        } else {
+            mensaje = await this.mensajeFactura(nombre, descripcion, monto, saldoNuevo);
+        }
+        
+        const enviado = this.open(telefono, mensaje);
+        
+        if (enviado) {
+            Toast.success('Abriendo WhatsApp...');
+            this.trackEnvio(1);
+        }
+    },
+
     /**
      * Envía recordatorio de deuda por WhatsApp
      */
@@ -3067,6 +3432,7 @@ const ProveedorDetalle = {
                         <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;">
                             <a href="/nueva-factura?proveedor=${proveedor.id}" class="btn btn-sm" style="flex:1;padding:0.5rem;font-size:0.8rem;background:#ea580c;color:white;">📄 Factura</a>
                             <a href="/nuevo-pago-proveedor?proveedor=${proveedor.id}" class="btn btn-success btn-sm" style="flex:1;padding:0.5rem;font-size:0.8rem;">💸 Pago</a>
+                            <a href="/reporte-proveedor/${proveedor.id}" class="btn btn-secondary btn-sm" style="flex:1;padding:0.5rem;font-size:0.8rem;">📄 Reporte</a>
                         </div>
                     </div>
                     
@@ -3219,6 +3585,13 @@ const NuevaFactura = {
                         Dashboard
                     </a>
                 </div>
+                <div style="margin-top: 1rem;">
+                    ${this.selectedProveedor.telefono ? `
+                        <button onclick="WhatsApp.enviarComprobanteProveedor('factura', '${escapeHtml(this.selectedProveedor.nombre)}', '${this.selectedProveedor.telefono}', ${monto}, '${escapeHtml(descripcion)}', ${saldoAnterior}, ${saldoNuevo})" class="btn btn-lg" style="width:100%;background:#25D366;color:white;font-size:0.95rem;">
+                            📱 Enviar Comprobante por WhatsApp
+                        </button>
+                    ` : ''}
+                </div>
             </div>
         `;
     },
@@ -3241,7 +3614,7 @@ const NuevaFactura = {
                     resultsContainer.innerHTML = `<div class="search-result-empty">No se encontraron proveedores</div>`;
                 } else {
                     resultsContainer.innerHTML = data.map(proveedor => `
-                        <div class="search-result-item" onclick="NuevaFactura.selectProveedor('${proveedor.id}', '${escapeHtml(proveedor.nombre)}', ${proveedor.saldo || 0})">
+                        <div class="search-result-item" onclick="NuevaFactura.selectProveedor('${proveedor.id}', '${escapeHtml(proveedor.nombre)}', ${proveedor.saldo || 0}, '${proveedor.telefono || ''}')">
                             <div class="search-result-name">${escapeHtml(proveedor.nombre)}</div>
                             <div class="search-result-info">${formatTelefono(proveedor.telefono)} • Deuda: ${formatCurrency(proveedor.saldo || 0)}</div>
                         </div>
@@ -3263,18 +3636,19 @@ const NuevaFactura = {
         });
     },
     
-    async selectProveedor(proveedorId, nombre, saldo) {
+    async selectProveedor(proveedorId, nombre, saldo, telefono = '') {
         if (nombre === undefined) {
             try {
                 const { data } = await API.getProveedor(proveedorId);
                 nombre = data.nombre;
                 saldo = data.saldo || 0;
+                telefono = data.telefono || '';
             } catch (error) {
                 Toast.error("Error al cargar proveedor");
                 return;
             }
         }
-        this.selectedProveedor = { id: proveedorId, nombre: nombre, saldo: saldo };
+        this.selectedProveedor = { id: proveedorId, nombre: nombre, saldo: saldo, telefono: telefono };
         
         const container = document.getElementById('proveedor-seleccionado');
         const searchInput = document.getElementById('buscar-proveedor');
@@ -3282,11 +3656,13 @@ const NuevaFactura = {
         
         if (container) {
             container.innerHTML = `
-                <div class="proveedor-selected">
-                    <div class="proveedor-selected-avatar" style="background: #ea580c;">${getInitials(nombre)}</div>
-                    <div class="proveedor-selected-info">
-                        <div class="proveedor-selected-name">${escapeHtml(nombre)}</div>
-                        <div class="proveedor-selected-saldo">Deuda actual: ${formatCurrency(saldo)}</div>
+                <div class="cliente-item" style="cursor: default; border-color: var(--success);">
+                    <div class="cliente-info">
+                        <div class="cliente-avatar" style="background: #ea580c; color: white;">${getInitials(nombre)}</div>
+                        <div>
+                            <div class="cliente-nombre">${escapeHtml(nombre)}</div>
+                            <div class="cliente-deuda">Deuda actual: ${formatCurrency(saldo)}</div>
+                        </div>
                     </div>
                     <button type="button" class="btn btn-sm btn-secondary" onclick="NuevaFactura.clearProveedor()">Cambiar</button>
                 </div>
@@ -3409,6 +3785,13 @@ const NuevoPagoProveedor = {
                         Dashboard
                     </a>
                 </div>
+                <div style="margin-top: 1rem;">
+                    ${this.selectedProveedor.telefono ? `
+                        <button onclick="WhatsApp.enviarComprobanteProveedor('pago', '${escapeHtml(this.selectedProveedor.nombre)}', '${this.selectedProveedor.telefono}', ${monto}, '${escapeHtml(descripcion)}', ${saldoAnterior}, ${saldoNuevo})" class="btn btn-lg" style="width:100%;background:#25D366;color:white;font-size:0.95rem;">
+                            📱 Enviar Comprobante por WhatsApp
+                        </button>
+                    ` : ''}
+                </div>
             </div>
         `;
     },
@@ -3431,7 +3814,7 @@ const NuevoPagoProveedor = {
                     resultsContainer.innerHTML = `<div class="search-result-empty">No se encontraron proveedores</div>`;
                 } else {
                     resultsContainer.innerHTML = data.map(proveedor => `
-                        <div class="search-result-item" onclick="NuevoPagoProveedor.selectProveedor('${proveedor.id}', '${escapeHtml(proveedor.nombre)}', ${proveedor.saldo || 0})">
+                        <div class="search-result-item" onclick="NuevoPagoProveedor.selectProveedor('${proveedor.id}', '${escapeHtml(proveedor.nombre)}', ${proveedor.saldo || 0}, '${proveedor.telefono || ''}')">
                             <div class="search-result-name">${escapeHtml(proveedor.nombre)}</div>
                             <div class="search-result-info">${formatTelefono(proveedor.telefono)} • Deuda: ${formatCurrency(proveedor.saldo || 0)}</div>
                         </div>
@@ -3453,18 +3836,19 @@ const NuevoPagoProveedor = {
         });
     },
     
-    async selectProveedor(proveedorId, nombre, saldo) {
+    async selectProveedor(proveedorId, nombre, saldo, telefono = '') {
         if (nombre === undefined) {
             try {
                 const { data } = await API.getProveedor(proveedorId);
                 nombre = data.nombre;
                 saldo = data.saldo || 0;
+                telefono = data.telefono || '';
             } catch (error) {
                 Toast.error("Error al cargar proveedor");
                 return;
             }
         }
-        this.selectedProveedor = { id: proveedorId, nombre: nombre, saldo: saldo };
+        this.selectedProveedor = { id: proveedorId, nombre: nombre, saldo: saldo, telefono: telefono };
         
         const container = document.getElementById('proveedor-seleccionado');
         const searchInput = document.getElementById('buscar-proveedor');
@@ -3472,11 +3856,13 @@ const NuevoPagoProveedor = {
         
         if (container) {
             container.innerHTML = `
-                <div class="proveedor-selected">
-                    <div class="proveedor-selected-avatar" style="background: #ea580c;">${getInitials(nombre)}</div>
-                    <div class="proveedor-selected-info">
-                        <div class="proveedor-selected-name">${escapeHtml(nombre)}</div>
-                        <div class="proveedor-selected-saldo">Deuda actual: ${formatCurrency(saldo)}</div>
+                <div class="cliente-item" style="cursor: default; border-color: var(--success);">
+                    <div class="cliente-info">
+                        <div class="cliente-avatar" style="background: #ea580c; color: white;">${getInitials(nombre)}</div>
+                        <div>
+                            <div class="cliente-nombre">${escapeHtml(nombre)}</div>
+                            <div class="cliente-deuda">Deuda actual: ${formatCurrency(saldo)}</div>
+                        </div>
                     </div>
                     <button type="button" class="btn btn-sm btn-secondary" onclick="NuevoPagoProveedor.clearProveedor()">Cambiar</button>
                 </div>
@@ -3690,9 +4076,17 @@ const GlobalSearch = {
     positionDropdown() {
         if (!this.input || !this.resultsPanel) return;
         const rect = this.input.getBoundingClientRect();
-        this.resultsPanel.style.top = (rect.bottom + 8) + 'px';
-        this.resultsPanel.style.left = rect.left + 'px';
-        this.resultsPanel.style.width = Math.max(rect.width, 320) + 'px';
+        const parent = this.resultsPanel.offsetParent || document.body;
+        const pRect = parent.getBoundingClientRect();
+        const width = Math.max(rect.width, 320);
+        // El header usa backdrop-filter: crea un containing block para position:fixed,
+        // por lo que las coordenadas son relativas al offsetParent y hay que restarlo.
+        let left = rect.left + rect.width / 2 - width / 2 - pRect.left;
+        const maxLeft = window.innerWidth - width - 8 - pRect.left;
+        left = Math.min(Math.max(8 - pRect.left, left), maxLeft);
+        this.resultsPanel.style.top = (rect.bottom + 8 - pRect.top) + 'px';
+        this.resultsPanel.style.left = left + 'px';
+        this.resultsPanel.style.width = width + 'px';
     },
 
     showPanel() {
@@ -3934,7 +4328,7 @@ const GlobalSearch = {
                 ? `${item.saldo > 0 ? formatCurrency(item.saldo) : '✓ Al día'}`
                 : item.stock != null ? `Stock: ${item.stock}` : '';
             const badgeClass = item.saldo > 0 ? 'gs-badge-danger' : (item.stock > 0 ? 'gs-badge-success' : 'gs-badge-warning');
-            const link = type === 'clients' ? `/cliente/${item.id}` : type === 'products' ? `/inventario?q=${encodeURIComponent(name)}` : `/proveedores/${item.id}`;
+            const link = type === 'clients' ? `/cliente/${item.id}` : type === 'products' ? `/inventario?q=${encodeURIComponent(name)}` : `/proveedor/${item.id}`;
             return `
                 <a href="${link}" class="gs-result-item" onclick="if(GlobalSearch.input)GlobalSearch.navigateTo('${link}');return false;">
                     <div class="gs-result-avatar ${avatarClass}">${type === 'clients' ? getInitials(name) : icon}</div>
@@ -4013,7 +4407,7 @@ const GlobalSearch = {
         if (proveedores.length > 0) {
             html += `<div class="gs-section-header">🏭 Proveedores (${proveedores.length})</div>`;
             html += proveedores.slice(0, 3).map(p => `
-                <a href="/proveedores/${p.id}" class="gs-result-item" onclick="GlobalSearch.navigateTo('/proveedores/${p.id}');return false;">
+                <a href="/proveedor/${p.id}" class="gs-result-item" onclick="GlobalSearch.navigateTo('/proveedor/${p.id}');return false;">
                     <div class="gs-result-avatar gs-avatar-crm">${getInitials(p.nombre)}</div>
                     <div class="gs-result-info">
                         <div class="gs-result-name">${this.highlight(escapeHtml(p.nombre), query)}</div>

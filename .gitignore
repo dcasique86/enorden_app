@@ -30,3 +30,7 @@ enorden_macos/backups/
 # Base de datos local
 *.db
 *.sqlite
+
+# Artefactos de pruebas (Playwright MCP)
+.playwright-mcp/
+*.png

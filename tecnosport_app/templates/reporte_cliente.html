@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}Reporte de Cliente - {{ nombre_tienda }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    .reporte-toolbar {
+        display: flex;
+        align-items: flex-end;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-bottom: 1rem;
+    }
+    .reporte-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-left: auto;
+    }
+    .reporte-hoja {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        padding: 2rem;
+    }
+    .reporte-encabezado {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 1.5rem;
+        border-bottom: 2px solid var(--border-color);
+        padding-bottom: 1rem;
+        gap: 1rem;
+    }
+    .reporte-titulo {
+        font-size: 1.25rem;
+        font-weight: 800;
+        margin-bottom: 0.25rem;
+    }
+    .reporte-meta {
+        color: var(--text-muted);
+        font-size: 0.85rem;
+        margin-top: 0.15rem;
+    }
+    .reporte-tabla {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 0.25rem;
+    }
+    .reporte-tabla th {
+        text-align: left;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+        border-bottom: 2px solid var(--border-color);
+        padding: 0.5rem;
+    }
+    .reporte-tabla td {
+        padding: 0.5rem;
+        border-bottom: 1px solid var(--border-light);
+        font-size: 0.9rem;
+        vertical-align: top;
+        white-space: pre-line;
+    }
+    .reporte-tabla .monto {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+    .reporte-tabla .total td {
+        font-weight: 700;
+        border-top: 2px solid var(--border-color);
+        border-bottom: none;
+        background: var(--bg-card-hover);
+    }
+    .texto-negativo { color: var(--danger); }
+    .texto-positivo { color: var(--success); }
+    .reporte-seccion {
+        font-size: 0.95rem;
+        font-weight: 700;
+        margin: 1.25rem 0 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    .reporte-card-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 0.75rem;
+        margin-bottom: 0.5rem;
+    }
+    .reporte-card {
+        background: var(--bg-card-hover);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        padding: 0.9rem 1rem;
+    }
+    .reporte-card .label {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+        margin-bottom: 0.3rem;
+    }
+    .reporte-card .value {
+        font-size: 1.1rem;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+    }
+    @media print {
+        .app-sidebar, .viewport-header, .topbar, .assistant-search-container, .topbar-actions,
+        .theme-toggle-btn, .reporte-toolbar, .no-print, .page-header { display: none !important; }
+        body { background: #fff !important; }
+        .viewport-layout, .app-shell, .viewport-content { display: block !important; padding: 0 !important; margin: 0 !important; }
+        .reporte-hoja { border: none !important; box-shadow: none !important; padding: 0 !important; background: #fff !important; }
+        .reporte-encabezado, .reporte-tabla th, .reporte-tabla .total td { border-color: #999 !important; }
+        .reporte-tabla td { border-color: #ddd !important; color: #000 !important; }
+        .reporte-meta, .reporte-card .label, .reporte-tabla th { color: #444 !important; }
+        .reporte-card { background: #f7f7f7 !important; border-color: #ccc !important; }
+        .reporte-card .value { color: #000 !important; }
+    }
+</style>
+{% endblock %}
+
+{% block context_nav %}
+<a href="/clientes" class="btn btn-ghost" style="display: inline-flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+    ← Volver a Clientes
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-view" style="padding-top:0.5rem;">
+    <span id="reporte-tienda" style="display:none;">{{ nombre_tienda }}</span>
+
+    <div class="reporte-toolbar no-print">
+        <div class="form-group" style="margin:0;">
+            <label class="form-label" style="font-size:0.8rem;margin-bottom:0.25rem;">Desde</label>
+            <input type="date" id="reporte-desde" class="form-input">
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label class="form-label" style="font-size:0.8rem;margin-bottom:0.25rem;">Hasta</label>
+            <input type="date" id="reporte-hasta" class="form-input">
+        </div>
+        <div class="reporte-actions">
+            <button class="btn btn-secondary btn-sm" onclick="ReporteCliente.limpiarFiltros()">Todo</button>
+            <button class="btn btn-primary btn-sm" onclick="ReporteCliente.cargar()">Filtrar</button>
+            <button class="btn btn-success btn-sm" onclick="window.print()">🖨️ Imprimir / PDF</button>
+        </div>
+    </div>
+
+    <div id="reporte" class="reporte-hoja">
+        <div class="loading" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3rem;">
+            <div class="spinner"></div>
+            <p style="margin-top:1rem;">Cargando reporte...</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.body.dataset.page = 'reporte-cliente';
+    // Obtener ID del cliente de la URL
+    const pathParts = window.location.pathname.split('/');
+    document.body.dataset.clienteId = pathParts[pathParts.length - 1];
+</script>
+{% endblock %}

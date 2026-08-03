@@ -904,7 +904,7 @@ class DatabaseManager:
     
     # ==================== BACKUPS ====================
     
-    def crear_backup(self) -> str:
+    def crear_backup(self, mantener: int = 30) -> str:
         """Crea un backup del archivo SQLite"""
         fecha = datetime.now().strftime("%Y-%m-%d")
         backup_filename = f"backup_{fecha}.db"
@@ -918,8 +918,8 @@ class DatabaseManager:
         
         shutil.copy2(self.db_path, backup_path)
         
-        # Limpiar backups antiguos (mantener últimos 30)
-        self._limpiar_backups_antiguos()
+        # Limpiar backups antiguos (mantener últimos N, 30 por defecto)
+        self._limpiar_backups_antiguos(mantener=mantener)
         
         return backup_path
     
@@ -1208,6 +1208,75 @@ class DatabaseManager:
             "proveedor": proveedor,
             "resumen": resumen,
             "movimientos": movimientos
+        }
+    
+    def get_reporte_cliente(self, cliente_id: str, desde: str = None, hasta: str = None) -> Dict[str, Any]:
+        """Obtiene reporte detallado de un cliente (resumen + ventas + abonos) con filtro de fechas"""
+        cliente = self.get_cliente_by_id(cliente_id)
+        if not cliente:
+            return None
+
+        movimientos = self.get_movimientos_by_cliente(cliente_id)
+
+        # Filtrar por rango de fechas (fecha YYYY-MM-DD)
+        if desde:
+            movimientos = [m for m in movimientos if m.get('fecha') and m['fecha'] >= desde]
+        if hasta:
+            movimientos = [m for m in movimientos if m.get('fecha') and m['fecha'] <= hasta]
+
+        ventas = [m for m in movimientos if m['tipo'] == 'prestamo']
+        abonos = [m for m in movimientos if m['tipo'] == 'abono']
+
+        total_ventas = sum(m['monto'] for m in ventas)
+        total_abonos = sum(m['monto'] for m in abonos)
+
+        resumen_global = self.get_resumen_cliente(cliente_id) or {}
+        resumen = {
+            "total_ventas": total_ventas,
+            "total_abonos": total_abonos,
+            "saldo_periodo": total_ventas - total_abonos,
+            "saldo_actual": resumen_global.get('saldo', 0),
+        }
+
+        return {
+            "entidad": cliente,
+            "resumen": resumen,
+            "ventas": sorted(ventas, key=lambda x: x['timestamp'], reverse=True),
+            "abonos": sorted(abonos, key=lambda x: x['timestamp'], reverse=True),
+        }
+    
+    def get_reporte_proveedor(self, proveedor_id: str, desde: str = None, hasta: str = None) -> Dict[str, Any]:
+        """Obtiene reporte detallado de un proveedor (resumen + facturas + pagos) con filtro de fechas"""
+        proveedor = self.get_proveedor_by_id(proveedor_id)
+        if not proveedor:
+            return None
+
+        movimientos = self.get_movimientos_by_proveedor(proveedor_id)
+
+        if desde:
+            movimientos = [m for m in movimientos if m.get('fecha') and m['fecha'] >= desde]
+        if hasta:
+            movimientos = [m for m in movimientos if m.get('fecha') and m['fecha'] <= hasta]
+
+        facturas = [m for m in movimientos if m['tipo'] == 'factura']
+        pagos = [m for m in movimientos if m['tipo'] == 'pago']
+
+        total_facturas = sum(m['monto'] for m in facturas)
+        total_pagado = sum(m['monto'] for m in pagos)
+
+        resumen_global = self.get_resumen_proveedor(proveedor_id) or {}
+        resumen = {
+            "total_facturas": total_facturas,
+            "total_pagado": total_pagado,
+            "saldo_periodo": total_facturas - total_pagado,
+            "saldo_actual": resumen_global.get('saldo', 0),
+        }
+
+        return {
+            "entidad": proveedor,
+            "resumen": resumen,
+            "facturas": sorted(facturas, key=lambda x: x['timestamp'], reverse=True),
+            "pagos": sorted(pagos, key=lambda x: x['timestamp'], reverse=True),
         }
     
     def get_dashboard_stats_proveedores(self) -> Dict[str, Any]:
@@ -1605,6 +1674,11 @@ class DatabaseManager:
         finally:
             if conn:
                 conn.close()
+
+    def get_config(self, clave: str, default: Optional[str] = None) -> Optional[str]:
+        """Lee un valor de configuración con valor por defecto (público)."""
+        valor = self._get_config_value(clave)
+        return valor if valor is not None else default
     
     def _set_config_value(self, clave: str, valor: str, descripcion: str = ""):
         """Guarda un valor de configuración en la tabla config"""

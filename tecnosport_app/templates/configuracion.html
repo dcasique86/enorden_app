@@ -61,6 +61,43 @@
         color: var(--text-primary);
     }
     
+    .config-card-header {
+        cursor: pointer;
+        user-select: none;
+        border-radius: var(--radius-md);
+        transition: background var(--transition-fast);
+    }
+    
+    .config-card-header:hover {
+        background: var(--bg-card-hover);
+    }
+    
+    .config-card-chevron {
+        margin-left: auto;
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        transition: transform var(--transition-fast);
+    }
+    
+    .config-card.open .config-card-chevron {
+        transform: rotate(180deg);
+    }
+    
+    .config-card-body {
+        display: grid;
+        grid-template-rows: 0fr;
+        transition: grid-template-rows 0.3s ease;
+    }
+    
+    .config-card.open .config-card-body {
+        grid-template-rows: 1fr;
+    }
+    
+    .config-card-body > div {
+        overflow: hidden;
+        min-height: 0;
+    }
+    
     .config-form-group {
         margin-bottom: 1rem;
     }
@@ -311,15 +348,52 @@
         <span class="config-info-label">Última copia de seguridad</span>
         <span id="last-backup" class="config-info-value muted">Sin copias</span>
     </div>
-    <div class="config-info-row" style="display: flex; justify-content: space-between; padding: 0.75rem 0;">
+    <div class="config-info-row" style="display: flex; justify-content: space-between; padding: 0.75rem 0; border-bottom: 1px solid var(--border-color);">
         <span class="config-info-label">Total de backups</span>
         <span id="total-backups" class="config-info-value">0</span>
     </div>
-    <div style="margin-top: 1rem;">
-        <button class="config-btn primary" onclick="crearBackup()">
-            <span>💾</span>
+    <div class="config-info-row" style="display: flex; justify-content: space-between; padding: 0.75rem 0;">
+        <span class="config-info-label">Próxima copia automática</span>
+        <span id="proximo-backup" class="config-info-value muted">Sin programar</span>
+    </div>
+    <div class="config-form-group" style="margin-top: 0.75rem;">
+        <label class="config-label">Copias automáticas</label>
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <label class="config-switch" style="position: relative; display: inline-block; width: 46px; height: 26px;">
+                <input type="checkbox" id="backup-activo" style="opacity: 0; width: 0; height: 0;">
+                <span style="position: absolute; inset: 0; background: var(--border-color, #ccc); border-radius: 26px; transition: background 0.2s;"></span>
+                <span style="position: absolute; left: 3px; top: 3px; width: 20px; height: 20px; background: #fff; border-radius: 50%; transition: transform 0.2s;"></span>
+            </label>
+            <span class="config-info-label" style="margin: 0;" id="backup-activo-label">Desactivadas</span>
+        </div>
+    </div>
+    <div class="config-form-group">
+        <label class="config-label">Frecuencia</label>
+        <select id="backup-frecuencia" class="config-input">
+            <option value="diario">Diaria (a una hora)</option>
+            <option value="cada_12h">Cada 12 horas</option>
+            <option value="cada_6h">Cada 6 horas</option>
+        </select>
+    </div>
+    <div class="config-form-group" id="backup-hora-group">
+        <label class="config-label">Hora del backup diario</label>
+        <input type="time" id="backup-hora" class="config-input" value="23:00">
+    </div>
+    <div class="config-form-group">
+        <label class="config-label">Copias a conservar</label>
+        <input type="number" id="backup-mantener" class="config-input" min="1" max="365" value="30">
+    </div>
+    <div style="display: flex; gap: 0.75rem; margin-top: 1rem; flex-wrap: wrap;">
+        <button class="config-btn primary" onclick="guardarProgramacionBackups()">
+            💾 Guardar programación
+        </button>
+        <button class="config-btn" onclick="crearBackup()">
+            <span>📦</span>
             Crear copia ahora
         </button>
+        <span id="save-indicator-backup" class="save-indicator" style="display: none; align-self: center;">
+            ✓ Guardado
+        </span>
     </div>
 </div>
 
@@ -343,6 +417,16 @@
     <div class="config-form-group">
         <label class="config-label">Plantilla: Recordatorio de Cobro</label>
         <textarea id="whatsapp-template-recordatorio" class="config-input" rows="4" placeholder="Ej: Hola {nombre}, te recordamos que tienes un saldo de {saldo}..."></textarea>
+    </div>
+
+    <div class="config-form-group">
+        <label class="config-label">Plantilla: Factura de Proveedor</label>
+        <textarea id="whatsapp-template-factura" class="config-input" rows="4" placeholder="Ej: Hola {nombre}, se registró tu factura de {monto}..."></textarea>
+    </div>
+
+    <div class="config-form-group">
+        <label class="config-label">Plantilla: Pago a Proveedor</label>
+        <textarea id="whatsapp-template-pago" class="config-input" rows="4" placeholder="Ej: Hola {nombre}, realizamos un pago de {monto}..."></textarea>
     </div>
 
     <div class="config-warning" style="margin-top: 1rem; padding: 1rem; background: var(--bg-input); border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 1rem;">
@@ -418,12 +502,50 @@
 
 {% block extra_scripts %}
 <script>
+    // Acordeón de Configuración: solo se muestra el nombre de cada sección
+    function initConfigAccordion() {
+        document.querySelectorAll('.config-card').forEach((card, i) => {
+            const header = card.querySelector(':scope > .config-card-header');
+            if (!header) return;
+
+            const chevron = document.createElement('span');
+            chevron.className = 'config-card-chevron';
+            chevron.textContent = '▾';
+            header.appendChild(chevron);
+
+            const body = document.createElement('div');
+            body.className = 'config-card-body';
+            const wrap = document.createElement('div');
+            body.appendChild(wrap);
+
+            let sibling = header.nextElementSibling;
+            while (sibling) {
+                const next = sibling.nextElementSibling;
+                wrap.appendChild(sibling);
+                sibling = next;
+            }
+            card.insertBefore(body, header.nextSibling);
+
+            header.addEventListener('click', () => {
+                const isOpen = card.classList.contains('open');
+                document.querySelectorAll('.config-card.open').forEach(c => c.classList.remove('open'));
+                if (!isOpen) card.classList.add('open');
+            });
+
+            if (i === 0) card.classList.add('open');
+        });
+    }
+
     // Cargar configuración al iniciar
     document.addEventListener('DOMContentLoaded', () => {
+        initConfigAccordion();
         loadConfiguracion();
         loadTrialInfo();
         loadBackups();
+        loadBackupEstado();
         loadWaStats();
+        // Mantener actualizada la próxima copia mientras la página esté abierta
+        setInterval(loadBackupEstado, 60000);
     });
 
     // Funciones de configuración (mantenidas del original)
@@ -442,6 +564,8 @@
                     document.getElementById('whatsapp-template-abono').value = config.whatsapp_template_abono || '';
                     document.getElementById('whatsapp-template-prestamo').value = config.whatsapp_template_prestamo || '';
                     document.getElementById('whatsapp-template-recordatorio').value = config.whatsapp_template_recordatorio || '';
+                    document.getElementById('whatsapp-template-factura').value = config.whatsapp_template_factura || '';
+                    document.getElementById('whatsapp-template-pago').value = config.whatsapp_template_pago || '';
                 }
 
                 // QR Payments
@@ -458,8 +582,36 @@
                 checkQrActivo.addEventListener('change', (e) => {
                     qrFieldsContainer.style.display = e.target.checked ? 'flex' : 'none';
                 });
+
+                // Programación de backups
+                const backupActivo = document.getElementById('backup-activo');
+                backupActivo.checked = config.backup_activo !== false;
+                document.getElementById('backup-frecuencia').value = config.backup_frecuencia || 'diario';
+                document.getElementById('backup-hora').value = config.backup_hora || '23:00';
+                document.getElementById('backup-mantener').value = config.backup_mantener || 30;
+                setBackupSwitchUI();
+                actualizarBackupHoraGroup();
+
+                const backupFrecuencia = document.getElementById('backup-frecuencia');
+                backupFrecuencia.addEventListener('change', actualizarBackupHoraGroup);
+                backupActivo.addEventListener('change', setBackupSwitchUI);
             }
         } catch (error) { console.error('Error:', error); }
+    }
+
+    function setBackupSwitchUI() {
+        const cb = document.getElementById('backup-activo');
+        const track = cb.nextElementSibling;
+        const knob = track.nextElementSibling;
+        knob.style.transform = cb.checked ? 'translateX(20px)' : 'translateX(0)';
+        track.style.background = cb.checked ? '#059669' : '#ccc';
+        document.getElementById('backup-activo-label').textContent = cb.checked ? 'Activadas' : 'Desactivadas';
+    }
+
+    function actualizarBackupHoraGroup() {
+        const frecuencia = document.getElementById('backup-frecuencia').value;
+        const esHoraria = frecuencia === 'cada_6h' || frecuencia === 'cada_12h';
+        document.getElementById('backup-hora-group').style.display = esHoraria ? 'none' : 'block';
     }
 
     async function guardarConfiguracionQR() {
@@ -528,6 +680,52 @@
         } catch (error) { console.error('Error:', error); }
     }
 
+    async function loadBackupEstado() {
+        try {
+            const response = await fetch('/api/backups/estado');
+            const result = await response.json();
+            if (result.success) {
+                const estado = result.data;
+                const el = document.getElementById('proximo-backup');
+                if (estado.proximo_backup) {
+                    el.textContent = new Date(estado.proximo_backup).toLocaleString();
+                } else if (estado.activo) {
+                    el.textContent = 'Recalculando...';
+                } else {
+                    el.textContent = 'Copias automáticas desactivadas';
+                }
+            }
+        } catch (error) { console.error('Error:', error); }
+    }
+
+    async function guardarProgramacionBackups() {
+        const activo = document.getElementById('backup-activo').checked;
+        const frecuencia = document.getElementById('backup-frecuencia').value;
+        const hora = document.getElementById('backup-hora').value || '23:00';
+        const mantener = parseInt(document.getElementById('backup-mantener').value, 10) || 30;
+        try {
+            const response = await fetch('/api/configuracion', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    backup_activo: activo,
+                    backup_frecuencia: frecuencia,
+                    backup_hora: hora,
+                    backup_mantener: mantener
+                })
+            });
+            const result = await response.json();
+            if (result.success) {
+                showSaveIndicator('save-indicator-backup');
+                loadBackupEstado();
+                // El scheduler recalcula en ~30s; reintentar hasta que se muestre la hora
+                setTimeout(loadBackupEstado, 3000);
+                setTimeout(loadBackupEstado, 10000);
+                setTimeout(loadBackupEstado, 35000);
+            }
+        } catch (error) { console.error('Error:', error); }
+    }
+
     async function guardarNombreTienda() {
         const nombre = document.getElementById('nombre-tienda').value.trim();
         if (!nombre) return;
@@ -551,6 +749,8 @@
         const templateAbono = document.getElementById('whatsapp-template-abono').value;
         const templatePrestamo = document.getElementById('whatsapp-template-prestamo').value;
         const templateRecordatorio = document.getElementById('whatsapp-template-recordatorio').value;
+        const templateFactura = document.getElementById('whatsapp-template-factura').value;
+        const templatePago = document.getElementById('whatsapp-template-pago').value;
         
         try {
             const response = await fetch('/api/configuracion', {
@@ -559,7 +759,9 @@
                 body: JSON.stringify({
                     whatsapp_template_abono: templateAbono,
                     whatsapp_template_prestamo: templatePrestamo,
-                    whatsapp_template_recordatorio: templateRecordatorio
+                    whatsapp_template_recordatorio: templateRecordatorio,
+                    whatsapp_template_factura: templateFactura,
+                    whatsapp_template_pago: templatePago
                 })
             });
             const result = await response.json();
