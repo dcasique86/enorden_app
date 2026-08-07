@@ -83,11 +83,11 @@ def enviar_mensaje(telefono: str, mensaje: str) -> dict:
 
 def notificar_devolucion_cliente(cliente_nombre: str, telefono: str, descripcion: str, monto: float, tienda: str = "EnOrden") -> dict:
     mensaje = (
-        f"🔄 *DEVOLUCIÓN REGISTRADA* - {tienda}\n\n"
+        f"*DEVOLUCIÓN REGISTRADA* - {tienda}\n\n"
         f"Hola {cliente_nombre},\n\n"
         f"Se ha registrado una devolución por:\n"
-        f"📝 *{descripcion}*\n"
-        f"💰 Monto: ${monto:,.2f}\n\n"
+        f"*{descripcion}*\n"
+        f"Monto: ${monto:,.2f}\n\n"
         f"Gracias por tu preferencia."
     )
     return enviar_mensaje(telefono, mensaje)
@@ -95,11 +95,11 @@ def notificar_devolucion_cliente(cliente_nombre: str, telefono: str, descripcion
 
 def notificar_devolucion_proveedor(proveedor_nombre: str, telefono: str, descripcion: str, monto: float, tienda: str = "EnOrden") -> dict:
     mensaje = (
-        f"🔄 *DEVOLUCIÓN A PROVEEDOR* - {tienda}\n\n"
+        f"*DEVOLUCIÓN A PROVEEDOR* - {tienda}\n\n"
         f"Hola {proveedor_nombre},\n\n"
         f"Se ha registrado una devolución:\n"
-        f"📝 *{descripcion}*\n"
-        f"💰 Monto: ${monto:,.2f}\n\n"
+        f"*{descripcion}*\n"
+        f"Monto: ${monto:,.2f}\n\n"
         f"Quedamos atentos a cualquier novedad."
     )
     return enviar_mensaje(telefono, mensaje)

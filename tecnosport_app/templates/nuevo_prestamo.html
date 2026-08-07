@@ -58,7 +58,7 @@
         <!-- Monto -->
         <div class="form-group">
             <label class="form-label">Monto *</label>
-            <input type="text" id="monto" inputmode="numeric" class="form-input" placeholder="0" required>
+            <input type="text" id="monto" inputmode="numeric" class="form-input" placeholder="0" required oninput="formatInput(this)">
         </div>
 
         <!-- Descripción -->
@@ -118,7 +118,7 @@
             if (!data.success || !data.data) return;
 
             const c = data.data;
-            clienteSeleccionado = { id: c.id, nombre: c.nombre };
+            clienteSeleccionado = { id: c.id, nombre: c.nombre, telefono: c.telefono || '', saldoAnterior: parseFloat(c.saldo || 0) };
 
             buscarInput.style.display = 'none';
             resultadosDiv.style.display = 'none';
@@ -201,15 +201,20 @@
                     return;
                 }
                 resultadosDiv.innerHTML = clientes.map(c => `
-                    <div class="search-result-item" data-id="${c.id}" data-nombre="${c.nombre}">
+                    <div class="search-result-item" data-id="${c.id}" data-nombre="${c.nombre}" data-telefono="${c.telefono || ''}" data-saldo="${c.saldo || 0}">
                         <strong>${c.nombre}</strong>
-                        <small style="color: var(--text-muted); margin-left: 0.5rem;">Deuda: $${parseFloat(c.deuda || 0).toLocaleString('es-CO')}</small>
+                        <small style="color: var(--text-muted); margin-left: 0.5rem;">Deuda: ${formatCurrency(c.saldo || 0)}</small>
                     </div>
                 `).join('');
                 resultadosDiv.style.display = 'block';
                 resultadosDiv.querySelectorAll('.search-result-item').forEach(item => {
                     item.addEventListener('click', () => {
-                        clienteSeleccionado = { id: item.dataset.id, nombre: item.dataset.nombre };
+                        clienteSeleccionado = {
+                            id: item.dataset.id,
+                            nombre: item.dataset.nombre,
+                            telefono: item.dataset.telefono || '',
+                            saldoAnterior: parseFloat(item.dataset.saldo || 0)
+                        };
                         clienteSeleccionadoDiv.innerHTML = `
                             <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; background: var(--bg-card-hover); border-radius: var(--radius-md);">
                                 <span>✅ <strong>${item.dataset.nombre}</strong></span>
@@ -267,8 +272,31 @@
             });
             const data = await res.json();
             if (data.success) {
-                const msg = data.message || (tipoOp === 'PRESTAMO_MERCANCIA' ? 'Préstamo de mercancía registrado' : 'Compra registrada');
-                window.location.href = '/?success=' + encodeURIComponent(msg);
+                const msg = tipoOp === 'PRESTAMO_MERCANCIA'
+                    ? 'Préstamo registrado exitosamente'
+                    : 'Compra registrada exitosamente';
+
+                // Obtener datos frescos del cliente (saldo actual y teléfono)
+                let telefono = clienteSeleccionado.telefono || '';
+                let saldoNuevo = parseFloat(clienteSeleccionado.saldoAnterior || 0) + monto;
+                try {
+                    const r2 = await fetch(`/api/clientes/${clienteSeleccionado.id}`);
+                    const data2 = await r2.json();
+                    if (data2.success && data2.data) {
+                        saldoNuevo = parseFloat(data2.data.saldo || 0);
+                        telefono = data2.data.telefono || telefono;
+                    }
+                } catch (e) { /* usar valores calculados */ }
+
+                mostrarConfirmacion({
+                    msg,
+                    monto,
+                    descripcion: descripcion || (tipoOp === 'PRESTAMO_MERCANCIA' ? 'Préstamo de mercancía' : 'Compra'),
+                    saldoAnterior: saldoNuevo - monto,
+                    saldoNuevo,
+                    telefono,
+                    reciboNumero: (data.data && data.data.recibo_numero) || null
+                });
             } else {
                 alert('Error: ' + (data.detail || 'Error desconocido'));
             }
@@ -276,7 +304,95 @@
             alert('Error de conexión: ' + e.message);
         }
     });
-    // Ejecutar pre-selección al final (después de definir variables)
-    preseleccionarClienteDesdeURL();
+    // --- Panel de confirmación con envío de comprobante ---
+    async function mostrarConfirmacion({ msg, monto, descripcion, saldoAnterior, saldoNuevo, telefono, reciboNumero }) {
+        const container = document.getElementById('form-container');
+        if (!container) return;
+
+        const config = await WhatsApp.getConfig();
+        const esVenta = tipoInput.value === 'COMPRA';
+        const mostrarReciboVenta = config.recibo_venta && esVenta;
+
+        const nombre = escapeHtml(clienteSeleccionado.nombre);
+        const id = clienteSeleccionado.id;
+        const icono = tipoInput.value === 'PRESTAMO_MERCANCIA' ? '📦' : '🛍️';
+        const tieneTelefono = telefono && telefono.replace(/[^\d]/g, '').length >= 7;
+
+        container.innerHTML = `
+            <div class="fade-in" style="text-align: center; padding: 2rem 0;">
+                <div style="font-size: 4rem; margin-bottom: 1rem;">${icono}</div>
+                <h3 style="margin-bottom: 0.5rem;">¡${msg}!</h3>
+                <p class="text-muted" style="margin-bottom: 2rem;">
+                    ${formatCurrency(monto)} a cargo de ${nombre}
+                </p>
+
+                <div style="background: var(--bg-main); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1.5rem;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; text-align: left;">
+                        <div>
+                            <p class="text-muted" style="font-size: 0.875rem; margin-bottom: 0.25rem;">Saldo anterior</p>
+                            <p style="font-weight: 600;">${formatCurrency(saldoAnterior)}</p>
+                        </div>
+                        <div>
+                            <p class="text-muted" style="font-size: 0.875rem; margin-bottom: 0.25rem;">Saldo actual</p>
+                            <p style="font-weight: 700; font-size: 1.25rem; color: var(--danger);">${formatCurrency(saldoNuevo)}</p>
+                        </div>
+                    </div>
+                </div>
+
+                ${tieneTelefono ? `
+                    <button onclick="WhatsApp.enviarComprobante('prestamo', '${id}', '${nombre}', '${telefono}', ${monto}, '${escapeHtml(descripcion)}', ${saldoAnterior}, ${saldoNuevo}, '${tipoInput.value}')"
+                            class="btn btn-lg btn-block"
+                            style="background: #25D366; color: white; margin-bottom: 0.5rem;">
+                        📱 Enviar comprobante por WhatsApp
+                    </button>
+                    <button onclick="WhatsApp.generarComprobante('prestamo', '${nombre}', ${monto}, ${saldoNuevo}, '${escapeHtml(descripcion)}', '${tipoInput.value}')"
+                            class="btn btn-lg btn-block"
+                            style="background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-color); margin-bottom: 1rem;">
+                        📸 Descargar comprobante como imagen
+                    </button>
+                ` : `
+                    <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid var(--warning); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
+                        <p style="font-size: 0.875rem; color: var(--warning);">
+                            ⚠️ El cliente no tiene teléfono registrado
+                        </p>
+                        <button onclick="WhatsApp.generarComprobante('prestamo', '${nombre}', ${monto}, ${saldoNuevo}, '${escapeHtml(descripcion)}', '${tipoInput.value}')"
+                                class="btn btn-block mt-1"
+                                style="background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-color);">
+                            📸 Descargar comprobante como imagen
+                        </button>
+                    </div>
+                `}
+
+                ${mostrarReciboVenta ? `
+                <button id="btn-imprimir-recibo" class="btn btn-lg btn-block"
+                        style="background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-color); margin-bottom: 1rem;">
+                    🖨️ Imprimir Recibo de Venta
+                </button>
+                ` : ''}
+
+                <div style="display: flex; gap: 1rem;">
+                    <button class="btn btn-primary btn-lg" style="flex: 1;" onclick="window.location.reload()">
+                        Registrar otra
+                    </button>
+                    <a href="/" class="btn btn-secondary btn-lg" style="flex: 1;">
+                        Dashboard
+                    </a>
+                </div>
+            </div>
+        `;
+
+        const btnRecibo = document.getElementById('btn-imprimir-recibo');
+        if (btnRecibo) {
+            btnRecibo.addEventListener('click', () => abrirReciboVenta({
+                nombre: clienteSeleccionado.nombre,
+                monto,
+                saldoAnterior,
+                saldoNuevo,
+                descripcion,
+                reciboNumero,
+                telefono
+            }));
+        }
+    }
 </script>
 {% endblock %}

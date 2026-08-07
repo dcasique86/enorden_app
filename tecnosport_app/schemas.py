@@ -7,6 +7,9 @@ from decimal import Decimal
 class ClienteBase(BaseModel):
     nombre: str = Field(..., min_length=1, description="Nombre del cliente")
     telefono: Optional[str] = Field(default="", description="Teléfono del cliente")
+    cedula: Optional[str] = Field(default="", description="Cédula del cliente")
+    direccion: Optional[str] = Field(default="", description="Dirección del cliente")
+    ciudad: Optional[str] = Field(default="", description="Ciudad del cliente")
 
 class ClienteCreate(ClienteBase):
     pass
@@ -14,6 +17,9 @@ class ClienteCreate(ClienteBase):
 class ClienteUpdate(BaseModel):
     nombre: Optional[str] = None
     telefono: Optional[str] = None
+    cedula: Optional[str] = None
+    direccion: Optional[str] = None
+    ciudad: Optional[str] = None
 
 class UltimoAbono(BaseModel):
     fecha: str
@@ -108,12 +114,18 @@ class ApiResponseMovimientosList(BaseModel):
 
 # ==================== MOVIMIENTOS PROVEEDOR SCHEMAS ====================
 
+class FacturaItem(BaseModel):
+    producto_id: str
+    cantidad: int = Field(..., ge=1, description="Cantidad de unidades recibidas")
+    precio_compra: Optional[float] = Field(default=None, description="Costo unitario de compra (opcional)")
+
 class MovimientoProveedorCreate(BaseModel):
     proveedor_id: str
     tipo: str  # factura o pago
     descripcion: str
     monto: Decimal
     fecha: Optional[str] = None  # Formato YYYY-MM-DD
+    items: Optional[List[FacturaItem]] = Field(default=None, description="Productos incluidos (suma stock cuando facturas_sumar_stock está activa)")
 
 class MovimientoProveedorRead(BaseModel):
     id: str
@@ -124,6 +136,7 @@ class MovimientoProveedorRead(BaseModel):
     fecha: str
     timestamp: str
     proveedor_nombre: Optional[str] = "Desconocido"
+    items_aplicados: Optional[List[Dict[str, Any]]] = None
 
 class ApiResponseMovimientoProveedor(BaseModel):
     success: bool
@@ -226,3 +239,102 @@ class TelegramUserRead(BaseModel):
     rol: str
     activo: bool
     fecha_registro: str
+
+# ==================== INVENTARIO / VENTAS SCHEMAS ====================
+
+class ProductoRead(BaseModel):
+    id: str
+    nombre: str
+    categoria: Optional[str] = ""
+    precio_compra: float = 0
+    precio_venta: float = 0
+    stock: int = 0
+    stock_minimo: int = 0
+    fecha_creacion: Optional[str] = None
+    activo: bool = True
+    referencia: Optional[str] = None
+    codigo_barras: Optional[str] = None
+
+class ApiResponseProducto(BaseModel):
+    success: bool
+    data: ProductoRead
+    message: Optional[str] = None
+
+class ApiResponseProductosList(BaseModel):
+    success: bool
+    data: List[ProductoRead]
+
+class HistorialPrecioRead(BaseModel):
+    id: int
+    producto_id: str
+    fecha: str
+    precio_compra_anterior: Optional[float] = None
+    precio_compra_nuevo: Optional[float] = None
+    precio_venta_anterior: Optional[float] = None
+    precio_venta_nuevo: Optional[float] = None
+
+class StockMovimientoRead(BaseModel):
+    id: str
+    producto_id: str
+    tipo: str  # inicial | venta | ajuste | compra | anulacion
+    cantidad: int
+    stock_resultante: int
+    nota: Optional[str] = None
+    referencia_id: Optional[str] = None
+    fecha: str
+    timestamp: str
+
+class ProductoDetalleRead(ProductoRead):
+    historial_precios: List[HistorialPrecioRead] = []
+    ultimas_ventas: List[Dict[str, Any]] = []
+    movimientos: List[StockMovimientoRead] = []
+    unidades_vendidas: int = 0
+    total_vendido: float = 0
+    ganancia_estimada: float = 0
+
+class ApiResponseProductoDetalle(BaseModel):
+    success: bool
+    data: ProductoDetalleRead
+
+class ApiResponseStockMovimientosList(BaseModel):
+    success: bool
+    data: List[StockMovimientoRead]
+
+class VentaRead(BaseModel):
+    id: str
+    producto_id: str
+    producto_nombre: Optional[str] = None
+    cantidad: int
+    precio_unitario: Optional[float] = None
+    total: Optional[float] = None
+    fecha: str
+    timestamp: str
+    nota: Optional[str] = None
+
+class ApiResponseVenta(BaseModel):
+    success: bool
+    data: VentaRead
+    message: Optional[str] = None
+
+class ApiResponseVentasList(BaseModel):
+    success: bool
+    data: List[VentaRead]
+
+class StockBajoItem(BaseModel):
+    id: str
+    nombre: str
+    stock: int
+    stock_minimo: int
+    referencia: Optional[str] = ""
+
+class InventarioStatsRead(BaseModel):
+    productos_activos: int
+    valor_inventario: float
+    ventas_hoy: float
+    unidades_vendidas_hoy: int
+    stock_bajo: List[StockBajoItem]
+    stock_bajo_count: int = 0
+
+class ApiResponseInventarioStats(BaseModel):
+    success: bool
+    data: InventarioStatsRead

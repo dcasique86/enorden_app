@@ -38,6 +38,9 @@ def detectar_estructura(archivo_path):
 def importar_datos_simple(archivo_path, 
                           col_nombre='nombre',
                           col_telefono='telefono',
+                          col_cedula='cedula',
+                          col_direccion='direccion',
+                          col_ciudad='ciudad',
                           col_deuda='deuda',
                           col_abonos='abonos',
                           col_prestamos='prestamos',
@@ -48,6 +51,9 @@ def importar_datos_simple(archivo_path,
     Estructura esperada (ajustable):
     - nombre: Nombre del cliente
     - telefono: Teléfono (opcional)
+    - cedula: Cédula (opcional)
+    - direccion: Dirección (opcional)
+    - ciudad: Ciudad (opcional)
     - deuda: Deuda actual (opcional si hay préstamos y abonos)
     - prestamos: Total prestado (opcional)
     - abonos: Total abonado (opcional)
@@ -71,15 +77,14 @@ def importar_datos_simple(archivo_path,
     
     print(f"✅ Registros válidos: {len(df)}")
     
-    # Cargar o crear archivo destino
-    if not os.path.exists(EXCEL_PATH):
-        print("\n📦 Creando base de datos nueva...")
-        from database import db
-    
-    # Abrir archivo destino
-    wb = load_workbook(EXCEL_PATH)
-    ws_clientes = wb["clientes"]
-    ws_movimientos = wb["movimientos"]
+    # Abrir archivo destino (legacy, solo para backwards-compat; si no existe se omite)
+    excel_legacy = None
+    if os.path.exists(EXCEL_PATH):
+        try:
+            wb = load_workbook(EXCEL_PATH)
+            excel_legacy = (wb, wb["clientes"], wb["movimientos"])
+        except Exception:
+            excel_legacy = None
     
     clientes_importados = 0
     movimientos_importados = 0
@@ -99,18 +104,45 @@ def importar_datos_simple(archivo_path,
             if telefono == 'nan':
                 telefono = ''
             
+            cedula = str(row.get(col_cedula, '')).strip()
+            if cedula == 'nan':
+                cedula = ''
+            
+            direccion = str(row.get(col_direccion, '')).strip()
+            if direccion == 'nan':
+                direccion = ''
+            
+            ciudad = str(row.get(col_ciudad, '')).strip()
+            if ciudad == 'nan':
+                ciudad = ''
+            
+            # Insertar el cliente en SQLite (fuente principal de datos)
+            from database import db
+            try:
+                cliente_sqlite = db.crear_cliente(
+                    nombre=nombre,
+                    telefono=telefono,
+                    cedula=cedula,
+                    direccion=direccion,
+                    ciudad=ciudad
+                )
+            except Exception as e:
+                print(f"   ⚠️ Error al insertar en SQLite (fila {idx}): {e}")
+                continue
+            
             # Crear ID de cliente
             cliente_id = str(uuid.uuid4())
             fecha_creacion = timestamp_actual
             
-            # Agregar cliente
-            ws_clientes.append([
-                cliente_id,
-                nombre,
-                telefono,
-                fecha_creacion,
-                True  # activo
-            ])
+            # Agregar cliente al Excel legacy (si existe)
+            if excel_legacy:
+                excel_legacy[1].append([
+                    cliente_id,
+                    nombre,
+                    telefono,
+                    fecha_creacion,
+                    True  # activo
+                ])
             
             clientes_importados += 1
             
@@ -146,54 +178,85 @@ def importar_datos_simple(archivo_path,
             
             # Crear movimiento de préstamo si hay monto
             if prestamos > 0:
-                ws_movimientos.append([
-                    str(uuid.uuid4()),
-                    cliente_id,
-                    'prestamo',
-                    'Saldo inicial importado',
-                    prestamos,
-                    fecha_actual,
-                    timestamp_actual
-                ])
+                if excel_legacy:
+                    excel_legacy[2].append([
+                        str(uuid.uuid4()),
+                        cliente_id,
+                        'prestamo',
+                        'Saldo inicial importado',
+                        prestamos,
+                        fecha_actual,
+                        timestamp_actual
+                    ])
+                try:
+                    db.crear_movimiento(
+                        cliente_id=cliente_sqlite['id'],
+                        tipo='prestamo',
+                        descripcion='Saldo inicial importado',
+                        monto=prestamos
+                    )
+                except Exception:
+                    pass
                 movimientos_importados += 1
             
             # Crear movimiento de abono si hay monto
             if abonos > 0:
-                ws_movimientos.append([
-                    str(uuid.uuid4()),
-                    cliente_id,
-                    'abono',
-                    'Abonos previos importados',
-                    abonos,
-                    fecha_actual,
-                    timestamp_actual
-                ])
+                if excel_legacy:
+                    excel_legacy[2].append([
+                        str(uuid.uuid4()),
+                        cliente_id,
+                        'abono',
+                        'Abonos previos importados',
+                        abonos,
+                        fecha_actual,
+                        timestamp_actual
+                    ])
+                try:
+                    db.crear_movimiento(
+                        cliente_id=cliente_sqlite['id'],
+                        tipo='abono',
+                        descripcion='Abonos previos importados',
+                        monto=abonos
+                    )
+                except Exception:
+                    pass
                 movimientos_importados += 1
             
             # Si solo hay deuda (sin desglose)
             if deuda > 0 and prestamos == 0 and abonos == 0:
-                ws_movimientos.append([
-                    str(uuid.uuid4()),
-                    cliente_id,
-                    'prestamo',
-                    'Deuda inicial importada',
-                    deuda,
-                    fecha_actual,
-                    timestamp_actual
-                ])
+                if excel_legacy:
+                    excel_legacy[2].append([
+                        str(uuid.uuid4()),
+                        cliente_id,
+                        'prestamo',
+                        'Deuda inicial importada',
+                        deuda,
+                        fecha_actual,
+                        timestamp_actual
+                    ])
+                try:
+                    db.crear_movimiento(
+                        cliente_id=cliente_sqlite['id'],
+                        tipo='prestamo',
+                        descripcion='Deuda inicial importada',
+                        monto=deuda
+                    )
+                except Exception:
+                    pass
                 movimientos_importados += 1
                 
         except Exception as e:
             print(f"   ⚠️ Error en fila {idx}: {e}")
             continue
     
-    # Guardar archivo
-    wb.save(EXCEL_PATH)
+    # Guardar archivo legacy (si existe)
+    if excel_legacy:
+        excel_legacy[0].save(EXCEL_PATH)
     
     print(f"\n✅ IMPORTACIÓN COMPLETADA")
     print(f"   👥 Clientes importados: {clientes_importados}")
     print(f"   📝 Movimientos creados: {movimientos_importados}")
-    print(f"   💾 Guardado en: {EXCEL_PATH}")
+    print(f"   💾 Guardado en SQLite: {EXCEL_PATH}")
     
     return True
 
@@ -265,6 +328,21 @@ def modo_interactivo():
     if col_telefono not in columnas:
         col_telefono = ''
     
+    print("\n¿Qué columna contiene la CÉDULA? (Enter para saltar)")
+    col_cedula = input("Cédula: ").strip() or 'cedula'
+    if col_cedula not in columnas:
+        col_cedula = ''
+    
+    print("\n¿Qué columna contiene la DIRECCIÓN? (Enter para saltar)")
+    col_direccion = input("Dirección: ").strip() or 'direccion'
+    if col_direccion not in columnas:
+        col_direccion = ''
+    
+    print("\n¿Qué columna contiene la CIUDAD? (Enter para saltar)")
+    col_ciudad = input("Ciudad: ").strip() or 'ciudad'
+    if col_ciudad not in columnas:
+        col_ciudad = ''
+    
     print("\n¿Qué columna contiene la DEUDA actual? (Enter para saltar)")
     col_deuda = input("Deuda: ").strip() or 'deuda'
     
@@ -281,6 +359,9 @@ def modo_interactivo():
     print(f"   Registros: {len(df)}")
     print(f"   Columna nombre: {col_nombre}")
     print(f"   Columna teléfono: {col_telefono or '(no importar)'}")
+    print(f"   Columna cédula: {col_cedula or '(no importar)'}")
+    print(f"   Columna dirección: {col_direccion or '(no importar)'}")
+    print(f"   Columna ciudad: {col_ciudad or '(no importar)'}")
     print(f"   Columna deuda: {col_deuda or '(no importar)'}")
     print(f"   Columna préstamos: {col_prestamos or '(no importar)'}")
     print(f"   Columna abonos: {col_abonos or '(no importar)'}")
@@ -292,6 +373,9 @@ def modo_interactivo():
             archivo_path,
             col_nombre=col_nombre,
             col_telefono=col_telefono,
+            col_cedula=col_cedula,
+            col_direccion=col_direccion,
+            col_ciudad=col_ciudad,
             col_deuda=col_deuda,
             col_prestamos=col_prestamos,
             col_abonos=col_abonos

@@ -40,7 +40,7 @@
         <!-- Monto -->
         <div class="form-group">
             <label class="form-label">Monto de la Factura *</label>
-            <input type="text" id="monto" inputmode="numeric" class="form-input" placeholder="0" required>
+            <input type="text" id="monto" inputmode="numeric" class="form-input" placeholder="0" required oninput="formatInput(this)">
         </div>
 
         <!-- Descripción -->
@@ -53,6 +53,19 @@
         <div class="form-group">
             <label class="form-label">Fecha de la Factura</label>
             <input type="date" id="fecha" class="form-input">
+        </div>
+
+        <!-- Productos incluidos (si toggle activo) -->
+        <div id="factura-items-section" style="display: none;">
+            <div class="form-group">
+                <label class="form-label">Productos incluidos (sumarán stock)</label>
+                <div class="search-box" style="margin-bottom: 0;">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="buscar-producto-factura" class="search-input" placeholder="Buscar producto..." autocomplete="off">
+                    <div id="resultados-productos-factura" class="search-results"></div>
+                </div>
+            </div>
+            <div id="factura-items-list" style="margin-bottom: 1.5rem;"></div>
         </div>
 
         <!-- Info -->

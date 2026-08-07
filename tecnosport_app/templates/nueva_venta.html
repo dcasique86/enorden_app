@@ -32,6 +32,15 @@
 
     <div id="form-container">
         <form id="form-venta">
+            <div class="form-group hidden grupo-escaneo-codigo" id="grupo-escaneo-codigo">
+                <label class="form-label">Código de barras</label>
+                <div class="search-box" style="margin-bottom: 0;">
+                    <span class="search-icon">BC</span>
+                    <input type="text" id="escanear-codigo" class="search-input" placeholder="Escanea o digita el código y presiona Enter" autocomplete="off">
+                </div>
+                <p class="text-muted" style="font-size: 0.8rem; margin-top: 0.35rem;">Un lector USB envía el código y presiona Enter automáticamente.</p>
+            </div>
+
             <div class="form-group">
                 <label class="form-label">Producto</label>
                 <div class="search-box" style="margin-bottom: 0;">

@@ -438,16 +438,17 @@ const Blast = {
         // Fallback
         const saldoFmt = new Intl.NumberFormat('es-CO', {style:'currency', currency:'COP', maximumFractionDigits:0}).format(cliente.saldo);
         const dias = cliente.dias_sin_abonar;
-        return `Hola ${cliente.nombre} 👋\n\nTe recordamos que tienes un saldo pendiente de *${saldoFmt}*.\n${dias ? `Han pasado ${dias} días desde tu último abono.` : ''}\n\nSi deseas hacer un abono o tienes alguna duda, comunícate con nosotros. 🙏`;
+        return `Hola ${cliente.nombre},\n\nTe recordamos que tienes un saldo pendiente de *${saldoFmt}*.\n${dias ? `Han pasado ${dias} días desde tu último abono.` : ''}\n\nSi deseas hacer un abono o tienes alguna duda, comunícate con nosotros.`;
     },
 
     async enviarUno(id) {
         const c = this.clientes.find(x => x.id === id);
         if (!c || !c.telefono) return;
         const mensaje = await this.mensajeRecordatorio(c);
+        const texto = this.sanitizar(mensaje);
         const phone = c.telefono.replace(/[\s\-\(\)\+]/g, '');
         const formattedPhone = phone.startsWith('57') ? phone : (phone.startsWith('3') && phone.length === 10 ? '57' + phone : phone);
-        window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(mensaje)}`, '_blank');
+        window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(texto)}`, '_blank');
         this.trackEnvio(1);
         this.updateStats();
     },
@@ -468,9 +469,10 @@ const Blast = {
             if (!c || !c.telefono) continue;
             await new Promise(r => setTimeout(r, 900)); // Pequeño delay entre ventanas
             const mensaje = await this.mensajeRecordatorio(c);
+            const texto = this.sanitizar(mensaje);
             const phone = c.telefono.replace(/[\s\-\(\)\+]/g, '');
             const formattedPhone = phone.startsWith('57') ? phone : (phone.startsWith('3') && phone.length === 10 ? '57' + phone : phone);
-            window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(mensaje)}`, '_blank');
+            window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(texto)}`, '_blank');
             enviados++;
             const pct = Math.round((enviados / ids.length) * 100);
             bar.style.width = pct + '%';
@@ -497,6 +499,17 @@ const Blast = {
         total += cantidad;
         localStorage.setItem('wa_total_enviados', total);
         localStorage.setItem('wa_ultimo_envio', new Date().toISOString());
+    },
+
+    sanitizar(msg) {
+        if (window.WhatsApp && typeof window.WhatsApp.sanitizarMensaje === 'function') {
+            return window.WhatsApp.sanitizarMensaje(msg);
+        }
+        return String(msg || '')
+            .replace(/[\u00a0\u2007\u202f\u3000]/g, ' ')
+            .replace(/[\u200b\u200c\u200d\u2060\ufeff]/g, '')
+            .replace(/^\s+/, '')
+            .replace(/\s+$/, '');
     }
 };
 

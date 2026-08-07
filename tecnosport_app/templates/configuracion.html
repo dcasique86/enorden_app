@@ -212,6 +212,18 @@
         <label class="config-label">Nombre de la tienda</label>
         <input type="text" id="nombre-tienda" class="config-input" placeholder="Nombre de tu tienda">
     </div>
+    <div class="config-form-group">
+        <label class="config-label">Dirección</label>
+        <input type="text" id="direccion-empresa" class="config-input" placeholder="Dirección del negocio">
+    </div>
+    <div class="config-form-group">
+        <label class="config-label">NIT</label>
+        <input type="text" id="nit-empresa" class="config-input" placeholder="NIT de la empresa">
+    </div>
+    <div class="config-form-group">
+        <label class="config-label">Teléfono</label>
+        <input type="text" id="telefono-empresa" class="config-input" placeholder="Teléfono del negocio">
+    </div>
     <div style="display: flex; gap: 0.75rem; margin-top: 1rem;">
         <button class="config-btn primary" onclick="guardarNombreTienda()">
             Guardar cambios
@@ -266,6 +278,64 @@
         </button>
         <span id="save-indicator-qr" class="save-indicator" style="display: none;">
             ✓ QR Configurado
+        </span>
+    </div>
+</div>
+
+<!-- Inventario -->
+<div class="config-card" style="border-color: rgba(16,185,129,0.25);">
+    <div class="config-card-header">
+        <div class="config-card-icon" style="background: rgba(16,185,129,0.12); color: #10b981;">📦</div>
+        <h2 class="config-card-title">Inventario</h2>
+    </div>
+    
+    <div class="config-checkbox-group">
+        <input type="checkbox" id="check-facturas-stock" class="config-checkbox">
+        <div class="config-checkbox-label">
+            <span class="title">Sumar stock con factura de proveedor</span>
+            <p class="hint">Al activar esta opción, al registrar una factura de compra podrás incluir los productos comprados y el stock se incrementará automáticamente.</p>
+        </div>
+    </div>
+
+    <div class="config-checkbox-group">
+        <input type="checkbox" id="check-codigo-barras" class="config-checkbox">
+        <div class="config-checkbox-label">
+            <span class="title">Activar código de barras</span>
+            <p class="hint">Al activar esta opción, los productos tendrán un campo de código de barras, podrás buscarlos por ese código y en "Registrar Venta" podrás escanearlos con un lector USB (funciona como teclado + Enter) para cargarlos automáticamente.</p>
+        </div>
+    </div>
+
+    <div style="display: flex; gap: 0.75rem; margin-top: 1.25rem;">
+        <button class="config-btn primary" onclick="guardarConfiguracionInventario()">
+            Guardar Inventario
+        </button>
+        <span id="save-indicator-inventario" class="save-indicator" style="display: none;">
+            ✓ Configuración guardada
+        </span>
+    </div>
+</div>
+
+<!-- Recibos -->
+<div class="config-card" style="border-color: rgba(99,102,241,0.25);">
+    <div class="config-card-header">
+        <div class="config-card-icon" style="background: rgba(99,102,241,0.12); color: #6366f1;">🖨️</div>
+        <h2 class="config-card-title">Recibos</h2>
+    </div>
+    
+    <div class="config-checkbox-group">
+        <input type="checkbox" id="check-recibos-venta" class="config-checkbox">
+        <div class="config-checkbox-label">
+            <span class="title">Imprimir recibo al registrar una venta</span>
+            <p class="hint">Al activar esta opción, al registrar una compra de cliente podrás imprimir el recibo de venta desde la pantalla de confirmación.</p>
+        </div>
+    </div>
+
+    <div style="display: flex; gap: 0.75rem; margin-top: 1.25rem;">
+        <button class="config-btn primary" onclick="guardarConfiguracionRecibos()">
+            Guardar Recibos
+        </button>
+        <span id="save-indicator-recibos" class="save-indicator" style="display: none;">
+            ✓ Configuración guardada
         </span>
     </div>
 </div>
@@ -642,6 +712,9 @@
             if (result.success) {
                 const config = result.data;
                 document.getElementById('nombre-tienda').value = config.nombre_tienda || '{{ nombre_tienda }}';
+                document.getElementById('direccion-empresa').value = config.direccion || '';
+                document.getElementById('nit-empresa').value = config.nit || '';
+                document.getElementById('telefono-empresa').value = config.telefono || '';
                 document.getElementById('check-montos').checked = config.mostrar_montos_dashboard || false;
                 document.getElementById('check-resumen').checked = config.mostrar_resumen_inicio || false;
                 
@@ -668,6 +741,24 @@
                 checkQrActivo.addEventListener('change', (e) => {
                     qrFieldsContainer.style.display = e.target.checked ? 'flex' : 'none';
                 });
+
+                // Inventario
+                const checkFacturasStock = document.getElementById('check-facturas-stock');
+                if (checkFacturasStock) {
+                    checkFacturasStock.checked = config.facturas_sumar_stock || false;
+                }
+
+                // Código de barras
+                const checkCodigoBarras = document.getElementById('check-codigo-barras');
+                if (checkCodigoBarras) {
+                    checkCodigoBarras.checked = config.codigo_barras_activo || false;
+                }
+
+                // Recibos
+                const checkRecibosVenta = document.getElementById('check-recibos-venta');
+                if (checkRecibosVenta) {
+                    checkRecibosVenta.checked = config.recibo_venta || false;
+                }
 
                 // Programación de backups
                 const backupActivo = document.getElementById('backup-activo');
@@ -720,6 +811,39 @@
             const result = await response.json();
             if (result.success) {
                 showSaveIndicator('save-indicator-qr');
+                if (window.WhatsApp) WhatsApp.invalidarCache();
+            }
+        } catch (error) { console.error('Error:', error); }
+    }
+    
+    async function guardarConfiguracionInventario() {
+        const activo = document.getElementById('check-facturas-stock').checked;
+        const codigoBarras = document.getElementById('check-codigo-barras').checked;
+        try {
+            const response = await fetch('/api/configuracion', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ facturas_sumar_stock: activo, codigo_barras_activo: codigoBarras })
+            });
+            const result = await response.json();
+            if (result.success) {
+                showSaveIndicator('save-indicator-inventario');
+                if (typeof AppConfig !== 'undefined') AppConfig.invalidate();
+            }
+        } catch (error) { console.error('Error:', error); }
+    }
+
+    async function guardarConfiguracionRecibos() {
+        const activo = document.getElementById('check-recibos-venta').checked;
+        try {
+            const response = await fetch('/api/configuracion', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ recibo_venta: activo })
+            });
+            const result = await response.json();
+            if (result.success) {
+                showSaveIndicator('save-indicator-recibos');
                 if (window.WhatsApp) WhatsApp.invalidarCache();
             }
         } catch (error) { console.error('Error:', error); }
@@ -814,12 +938,15 @@
 
     async function guardarNombreTienda() {
         const nombre = document.getElementById('nombre-tienda').value.trim();
+        const direccion = document.getElementById('direccion-empresa').value.trim();
+        const nit = document.getElementById('nit-empresa').value.trim();
+        const telefono = document.getElementById('telefono-empresa').value.trim();
         if (!nombre) return;
         try {
             const response = await fetch('/api/configuracion', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ nombre_tienda: nombre })
+                body: JSON.stringify({ nombre_tienda: nombre, direccion, nit, telefono })
             });
             const result = await response.json();
             if (result.success) {

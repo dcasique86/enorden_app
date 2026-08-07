@@ -1,5 +1,0 @@
-Traceback (most recent call last):
-  File "C:\Users\Denis Casique\Documents\OPENCODE\enorden_app\tecnosport_app\telegram_bot.py", line 156, in <module>
-    @admin_only
-     ^^^^^^^^^^
-NameError: name 'admin_only' is not defined

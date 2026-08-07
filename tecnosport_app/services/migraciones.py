@@ -20,6 +20,32 @@ MIGRATIONS = [
             "ALTER TABLE movimientos_proveedores ADD COLUMN estado_operacion TEXT DEFAULT 'COMPRA'",
         ],
     },
+    {
+        "version": 3,
+        "description": "Agregar cedula, direccion, ciudad a clientes + indice de busqueda",
+        "sql": [
+            "ALTER TABLE clientes ADD COLUMN cedula TEXT",
+            "ALTER TABLE clientes ADD COLUMN direccion TEXT",
+            "ALTER TABLE clientes ADD COLUMN ciudad TEXT",
+            "CREATE INDEX IF NOT EXISTS idx_clientes_cedula ON clientes(cedula)",
+        ],
+    },
+    {
+        "version": 4,
+        "description": "Agregar codigo_barras a productos + indice unico parcial para integridad",
+        "sql": [
+            "ALTER TABLE productos ADD COLUMN codigo_barras TEXT",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_productos_codigo_barras ON productos(codigo_barras) WHERE codigo_barras IS NOT NULL AND codigo_barras <> ''",
+        ],
+    },
+    {
+        "version": 5,
+        "description": "Índice único de código de barras solo para productos activos (permite reutilizar códigos de productos eliminados)",
+        "sql": [
+            "DROP INDEX IF EXISTS idx_productos_codigo_barras",
+            "CREATE UNIQUE INDEX idx_productos_codigo_barras ON productos(codigo_barras) WHERE activo = 1 AND codigo_barras IS NOT NULL AND codigo_barras <> ''",
+        ],
+    },
 ]
 
 
@@ -66,11 +92,15 @@ def ejecutar_migraciones(db_instance) -> list[str]:
             logger.info(f"Ejecutando migración v{v}: {mig['description']}")
 
             for sql in mig["sql"]:
-                table = sql.split("ADD COLUMN")[0].split("ALTER TABLE")[1].strip()
-                column = sql.split("ADD COLUMN")[1].strip().split()[0]
-                if not _column_exists(conn, table, column):
+                if "ADD COLUMN" in sql:
+                    table = sql.split("ADD COLUMN")[0].split("ALTER TABLE")[1].strip()
+                    column = sql.split("ADD COLUMN")[1].strip().split()[0]
+                    if not _column_exists(conn, table, column):
+                        conn.execute(sql)
+                        logger.info(f"  Columna '{column}' agregada a '{table}'")
+                else:
                     conn.execute(sql)
-                    logger.info(f"  Columna '{column}' agregada a '{table}'")
+                    logger.info(f"  Sentencia ejecutada: {sql[:60]}")
 
             current_versions.add(v)
             _set_applied_versions(conn, current_versions)

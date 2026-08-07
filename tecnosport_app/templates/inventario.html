@@ -10,6 +10,8 @@
             Inventario
         </h2>
         <div style="display:flex;gap:0.5rem;">
+            <a href="/api/productos/exportar" class="btn btn-ghost btn-sm" title="Descargar productos en Excel">⬇ Exportar</a>
+            <button class="btn btn-ghost btn-sm" onclick="Modal.open('modal-importar-productos')">📥 Importar</button>
             <a href="/nueva-venta" class="btn btn-success btn-sm">Registrar Venta</a>
             <button class="btn btn-primary btn-sm" onclick="Modal.open('modal-nuevo-producto')">+ Nuevo Producto</button>
         </div>
@@ -31,13 +33,23 @@
         <input type="text" id="search-productos" class="search-input" placeholder="Buscar producto por nombre, categoria o referencia...">
     </div>
 
-    <div id="productos-list-container" class="scrollable-area" style="border:1px solid var(--border-color);border-radius:var(--radius-md);padding:0.5rem;background:var(--bg-card);">
+    <div id="productos-list-container" class="scrollable-area" style="border:1px solid var(--border-color);border-radius:var(--radius-md);background:var(--bg-card);min-height:0;">
         <div id="productos-list">
             <div class="loading">
                 <div class="spinner"></div>
                 <p style="margin-top: 1rem;">Cargando inventario...</p>
             </div>
         </div>
+    </div>
+
+    <div class="section" style="margin-top:1rem;">
+        <div class="section-header">
+            <h3 class="section-title">
+                <span class="section-title-icon" style="font-size:0.85rem;width:28px;height:28px;">VEN</span>
+                Ventas recientes
+            </h3>
+        </div>
+        <div id="ventas-list"></div>
     </div>
 </div>
 
@@ -59,6 +71,10 @@
             <div class="form-group">
                 <label class="form-label">Referencia / Modelo</label>
                 <input type="text" name="referencia" class="form-input">
+            </div>
+            <div class="form-group campo-codigo-barras hidden">
+                <label class="form-label">Código de barras</label>
+                <input type="text" name="codigo_barras" class="form-input" placeholder="Ej: 7701234567890">
             </div>
             <div class="form-group">
                 <label class="form-label">Precio compra</label>
@@ -115,6 +131,18 @@
     </div>
 </div>
 
+<div id="modal-detalle-producto" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title" id="detalle-producto-titulo">Detalle del Producto</h3>
+            <button class="modal-close" onclick="Modal.close('modal-detalle-producto')">x</button>
+        </div>
+        <div id="detalle-producto-body" class="scrollable-area" style="max-height: 70vh; overflow-y: auto; padding: 0.5rem;">
+            <div class="loading"><div class="spinner"></div><p style="margin-top: 1rem;">Cargando detalle...</p></div>
+        </div>
+    </div>
+</div>
+
 <div id="modal-editar-producto" class="modal-overlay">
     <div class="modal">
         <div class="modal-header">
@@ -135,6 +163,10 @@
                 <label class="form-label">Referencia / Modelo</label>
                 <input type="text" name="referencia" id="editar-producto-referencia" class="form-input">
             </div>
+            <div class="form-group campo-codigo-barras hidden">
+                <label class="form-label">Código de barras</label>
+                <input type="text" name="codigo_barras" id="editar-producto-codigo-barras" class="form-input" placeholder="Ej: 7701234567890">
+            </div>
             <div class="form-group">
                 <label class="form-label">Precio compra</label>
                 <input type="text" name="precio_compra" id="editar-producto-compra" inputmode="numeric" class="form-input" value="0">
@@ -154,4 +186,172 @@
         </form>
     </div>
 </div>
+
+<div id="modal-importar-productos" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Importar Productos desde Excel</h3>
+            <button class="modal-close" onclick="Modal.close('modal-importar-productos')">x</button>
+        </div>
+        <div id="importar-paso-1" style="padding:0.25rem 1rem 1rem;">
+            <div class="form-group">
+                <label class="form-label">Selecciona el archivo Excel (.xlsx o .xls)</label>
+                <input type="file" id="importar-file" class="form-input" accept=".xlsx,.xls">
+            </div>
+            <div style="display:flex;gap:1rem;margin-top:1.5rem;">
+                <button type="button" class="btn btn-secondary" onclick="Modal.close('modal-importar-productos')" style="flex:1;">Cancelar</button>
+                <button type="button" id="btn-analizar-productos" class="btn btn-primary" onclick="analizarProductos()" style="flex:1;">🔍 Analizar Archivo</button>
+            </div>
+        </div>
+        <div id="importar-paso-2" style="display:none;padding:0.25rem 1rem 1rem;">
+            <p><strong>Filas detectadas:</strong> <span id="productos-importar-filas">0</span></p>
+            <div style="max-height:35vh;overflow:auto;border:1px solid var(--border-color);border-radius:var(--radius-md);margin-bottom:1rem;">
+                <table style="width:100%;font-size:0.8rem;background:var(--bg-card);">
+                    <thead id="importar-productos-thead"></thead>
+                    <tbody id="importar-productos-tbody"></tbody>
+                </table>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Nombre *</label>
+                <select id="col-nombre-producto" class="form-input"></select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Categoria</label>
+                <select id="col-categoria-producto" class="form-input"><option value="">-- No importar --</option></select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Referencia / Modelo</label>
+                <select id="col-referencia-producto" class="form-input"><option value="">-- No importar --</option></select>
+            </div>
+            <div class="form-group campo-codigo-barras hidden">
+                <label class="form-label">Código de barras</label>
+                <select id="col-codigo-barras-producto" class="form-input"><option value="">-- No importar --</option></select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Precio compra</label>
+                <select id="col-precio-compra-producto" class="form-input"><option value="">-- No importar --</option></select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Precio venta</label>
+                <select id="col-precio-venta-producto" class="form-input"><option value="">-- No importar --</option></select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Stock</label>
+                <select id="col-stock-producto" class="form-input"><option value="">-- No importar --</option></select>
+            </div>
+            <div class="form-group">
+                <label for="crear-backup-productos" style="font-size:0.9375rem;color:var(--text-primary);">Crear backup antes de importar (recomendado)</label>
+                <input type="checkbox" id="crear-backup-productos" checked>
+            </div>
+            <div id="importar-productos-resultado" style="margin-bottom:0.75rem;"></div>
+            <div style="display:flex;gap:1rem;margin-top:0.5rem;">
+                <button type="button" class="btn btn-secondary" onclick="volverAnalizarProductos()" style="flex:1;">Volver</button>
+                <button type="button" id="btn-importar-productos" class="btn btn-success" onclick="importarProductos()" style="flex:1;">📥 Importar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let importarProductosFile = null;
+
+    async function analizarProductos() {
+        const file = document.getElementById('importar-file').files[0];
+        if (!file) { Toast.error('Selecciona un archivo Excel'); return; }
+        importarProductosFile = file;
+        const btn = document.getElementById('btn-analizar-productos');
+        btn.disabled = true;
+        btn.textContent = '⏳ Analizando...';
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+            const response = await fetch('/api/productos/importar/preview', { method: 'POST', body: formData });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || 'Error al analizar archivo');
+            const data = result.data;
+            document.getElementById('productos-importar-filas').textContent = data.total_filas;
+            const thead = document.getElementById('importar-productos-thead');
+            const tbody = document.getElementById('importar-productos-tbody');
+            thead.innerHTML = '<tr>' + data.columnas.map(c => `<th>${escapeHtml(String(c))}</th>`).join('') + '</tr>';
+            tbody.innerHTML = data.preview.map(fila => '<tr>' + data.columnas.map(c => {
+                const v = fila[c];
+                return `<td>${escapeHtml(v === undefined || v === null ? '' : String(v))}</td>`;
+            }).join('') + '</tr>').join('');
+            const selects = [
+                ['col-nombre-producto', ['nombre', 'producto']],
+                ['col-categoria-producto', ['categoria', 'categoría']],
+                ['col-referencia-producto', ['referencia', 'modelo', 'ref']],
+                ['col-codigo-barras-producto', ['codigo', 'código', 'barra', 'ean', 'upc']],
+                ['col-precio-compra-producto', ['compra', 'costo']],
+                ['col-precio-venta-producto', ['venta']],
+                ['col-stock-producto', ['stock', 'exist', 'cantidad']]
+            ];
+            selects.forEach(([selectId, needles]) => {
+                const select = document.getElementById(selectId);
+                select.innerHTML = '<option value="">-- No importar --</option>';
+                data.columnas.forEach(c => {
+                    const option = document.createElement('option');
+                    option.value = c; option.textContent = c;
+                    select.appendChild(option);
+                    if (select.value === '' && needles.some(n => String(c).toLowerCase().includes(n))) select.value = c;
+                });
+                if (selectId === 'col-nombre-producto' && select.value === '' && data.columnas.length) select.value = data.columnas[0];
+            });
+            document.getElementById('importar-paso-1').style.display = 'none';
+            document.getElementById('importar-paso-2').style.display = 'block';
+        } catch (error) {
+            Toast.error(error.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '🔍 Analizar Archivo';
+        }
+    }
+
+    function volverAnalizarProductos() {
+        document.getElementById('importar-paso-1').style.display = 'block';
+        document.getElementById('importar-paso-2').style.display = 'none';
+    }
+
+    async function importarProductos() {
+        const colNombre = document.getElementById('col-nombre-producto').value;
+        if (!colNombre) { Toast.error('Debes seleccionar la columna de nombre'); return; }
+        const btn = document.getElementById('btn-importar-productos');
+        btn.disabled = true;
+        btn.textContent = '⏳ Importando...';
+        const formData = new FormData();
+        formData.append('file', importarProductosFile);
+        formData.append('config', JSON.stringify({
+            col_nombre: colNombre,
+            col_categoria: document.getElementById('col-categoria-producto').value,
+            col_referencia: document.getElementById('col-referencia-producto').value,
+            col_codigo_barras: document.getElementById('col-codigo-barras-producto').value,
+            col_precio_compra: document.getElementById('col-precio-compra-producto').value,
+            col_precio_venta: document.getElementById('col-precio-venta-producto').value,
+            col_stock: document.getElementById('col-stock-producto').value,
+            crear_backup: document.getElementById('crear-backup-productos').checked
+        }));
+        const resultado = document.getElementById('importar-productos-resultado');
+        resultado.innerHTML = '<span class="text-muted">Importando...</span>';
+        try {
+            const response = await fetch('/api/productos/importar', { method: 'POST', body: formData });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || 'Error al importar');
+            resultado.innerHTML = `<span style="color:var(--success);font-weight:600;">✅ ${result.data.importados} producto(s) importado(s)</span>` +
+                (Array.isArray(result.data.errores) && result.data.errores.length
+                    ? `<ul style="margin-top:0.5rem;max-height:10rem;overflow:auto;font-size:0.8rem;color:var(--danger);">${result.data.errores.slice(0, 50).map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>`
+                    : '');
+            if (typeof Inventario !== 'undefined' && typeof Inventario.init === 'function') { try { await Inventario.init(); } catch (e) {} }
+        } catch (error) {
+            Toast.error(error.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '📥 Importar';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const file = document.getElementById('importar-file');
+        if (file) file.addEventListener('change', () => { importarProductosFile = null; });
+    });
+</script>
 {% endblock %}

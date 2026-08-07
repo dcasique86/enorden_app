@@ -34,3 +34,9 @@ enorden_macos/backups/
 # Artefactos de pruebas (Playwright MCP)
 .playwright-mcp/
 *.png
+
+# Logs
+*.log
+cloudflared_*
+logs/
+scratch/

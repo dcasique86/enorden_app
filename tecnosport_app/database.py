@@ -14,6 +14,14 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 
 
+def normalizar_codigo_barras(codigo: Optional[str]) -> Optional[str]:
+    """Normaliza un código de barras: recorta espacios y devuelve None si queda vacío."""
+    if codigo is None:
+        return None
+    codigo = codigo.strip()
+    return codigo or None
+
+
 class DatabaseManager:
     """Gestor de base de datos SQLite con compatibilidad de caché de dataframes en memoria"""
     
@@ -66,10 +74,18 @@ class DatabaseManager:
                 id TEXT PRIMARY KEY,
                 nombre TEXT NOT NULL,
                 telefono TEXT,
+                cedula TEXT,
+                direccion TEXT,
+                ciudad TEXT,
                 fecha_creacion TEXT,
                 activo INTEGER DEFAULT 1
             );
             """)
+            # En bases existentes la columna puede no existir aún (la crea la migración v3)
+            try:
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_clientes_cedula ON clientes(cedula)")
+            except sqlite3.OperationalError:
+                pass
             
             # 2. movimientos
             cursor.execute("""
@@ -122,7 +138,8 @@ class DatabaseManager:
                 stock_minimo INTEGER DEFAULT 0,
                 fecha_creacion TEXT,
                 activo INTEGER DEFAULT 1,
-                referencia TEXT
+                referencia TEXT,
+                codigo_barras TEXT
             );
             """)
             
@@ -209,6 +226,26 @@ class DatabaseManager:
                 );
             END;
             """)
+
+            # 11. stock_movimientos (auditoría de entradas/salidas de inventario)
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS stock_movimientos (
+                id TEXT PRIMARY KEY,
+                producto_id TEXT NOT NULL,
+                tipo TEXT NOT NULL,
+                cantidad INTEGER NOT NULL,
+                stock_resultante INTEGER NOT NULL,
+                nota TEXT,
+                referencia_id TEXT,
+                fecha TEXT,
+                timestamp TEXT,
+                FOREIGN KEY (producto_id) REFERENCES productos(id)
+            );
+            """)
+
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_stock_movimientos_producto ON stock_movimientos(producto_id)"
+            )
             
             conn.commit()
         finally:
@@ -247,6 +284,87 @@ class DatabaseManager:
         with self._lock:
             self._cache_timestamp = None
 
+    def _insertar_stock_movimiento(self, cursor, producto_id: str, tipo: str, cantidad: int, stock_resultante: int, nota: str = "", referencia_id: str = None):
+        """Inserta un registro de auditoría de stock usando el cursor de la transacción activa."""
+        mid = str(uuid.uuid4())
+        fecha = datetime.now().strftime("%Y-%m-%d")
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute(
+            "INSERT INTO stock_movimientos (id, producto_id, tipo, cantidad, stock_resultante, nota, referencia_id, fecha, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (mid, producto_id, tipo, int(cantidad), int(stock_resultante), nota, referencia_id, fecha, timestamp)
+        )
+
+    def get_stock_movimientos(self, producto_id: str, limite: int = 30) -> List[Dict[str, Any]]:
+        """Obtiene los movimientos de stock de un producto (más recientes primero)."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM stock_movimientos WHERE producto_id = ? ORDER BY timestamp DESC, rowid DESC LIMIT ?",
+                (producto_id, limite)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def get_producto_detalle(self, producto_id: str) -> Optional[Dict[str, Any]]:
+        """Obtiene detalle completo de un producto: datos base + historial de precios + movimientos de stock + stats de ventas."""
+        producto = self.get_producto_by_id(producto_id)
+        if not producto:
+            return None
+
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+
+            cursor.execute(
+                "SELECT * FROM historial_precios WHERE producto_id = ? ORDER BY fecha DESC, id DESC LIMIT 10",
+                (producto_id,)
+            )
+            historial_precios = [dict(r) for r in cursor.fetchall()]
+
+            cursor.execute(
+                "SELECT * FROM ventas WHERE producto_id = ? ORDER BY timestamp DESC LIMIT 10",
+                (producto_id,)
+            )
+            ultimas_ventas = [dict(r) for r in cursor.fetchall()]
+
+            cursor.execute(
+                "SELECT COALESCE(SUM(cantidad), 0) AS unidades, COALESCE(SUM(total), 0) AS total FROM ventas WHERE producto_id = ?",
+                (producto_id,)
+            )
+            venta_row = cursor.fetchone()
+        finally:
+            conn.close()
+
+        unidades_vendidas = int(venta_row["unidades"]) if venta_row else 0
+        total_vendido = float(venta_row["total"]) if venta_row else 0.0
+        precio_compra = float(producto.get("precio_compra") or 0)
+        ganancia_estimada = float(total_vendido) - (precio_compra * unidades_vendidas)
+
+        return {
+            **producto,
+            "historial_precios": historial_precios,
+            "ultimas_ventas": ultimas_ventas,
+            "movimientos": self.get_stock_movimientos(producto_id),
+            "unidades_vendidas": unidades_vendidas,
+            "total_vendido": round(total_vendido, 2),
+            "ganancia_estimada": round(ganancia_estimada, 2),
+        }
+
+    def get_ventas_producto(self, producto_id: str, limite: int = 10) -> List[Dict[str, Any]]:
+        """Obtiene las ventas recientes de un producto."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM ventas WHERE producto_id = ? ORDER BY timestamp DESC LIMIT ?",
+                (producto_id, limite)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
     def _format_telefono(self, tel: Any) -> str:
         """Convierte un teléfono a string de forma segura manejando float, NaN y None"""
         if pd.isna(tel) or tel is None:
@@ -268,8 +386,8 @@ class DatabaseManager:
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO gastos (categoria, monto, descripcion) VALUES (?, ?, ?)",
-                (categoria, monto, descripcion)
+                "INSERT INTO gastos (categoria, monto, descripcion, fecha) VALUES (?, ?, ?, ?)",
+                (categoria, monto, descripcion, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
             )
             gasto_id = cursor.lastrowid
             conn.commit()
@@ -373,7 +491,7 @@ class DatabaseManager:
         return cliente
     
     def buscar_clientes(self, query: str) -> List[Dict[str, Any]]:
-        """Busca clientes por nombre o teléfono"""
+        """Busca clientes por nombre, teléfono o cédula"""
         conn = None
         try:
             conn = self.get_connection()
@@ -384,8 +502,8 @@ class DatabaseManager:
             else:
                 q = f"%{query.strip().lower()}%"
                 cursor.execute(
-                    "SELECT * FROM clientes WHERE activo = 1 AND (LOWER(nombre) LIKE ? OR telefono LIKE ?)",
-                    (q, q)
+                    "SELECT * FROM clientes WHERE activo = 1 AND (LOWER(nombre) LIKE ? OR telefono LIKE ? OR LOWER(cedula) LIKE ?)",
+                    (q, q, q)
                 )
             rows = cursor.fetchall()
             
@@ -401,18 +519,21 @@ class DatabaseManager:
             if conn:
                 conn.close()
     
-    def crear_cliente(self, nombre: str, telefono: str = "") -> Dict[str, Any]:
+    def crear_cliente(self, nombre: str, telefono: str = "", cedula: str = "", direccion: str = "", ciudad: str = "") -> Dict[str, Any]:
         """Crea un nuevo cliente"""
         cliente_id = str(uuid.uuid4())
         fecha_creacion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         telefono_str = str(telefono).strip() if telefono else ""
+        cedula_str = str(cedula).strip() if cedula else ""
+        direccion_str = str(direccion).strip() if direccion else ""
+        ciudad_str = str(ciudad).strip() if ciudad else ""
         
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO clientes (id, nombre, telefono, fecha_creacion, activo) VALUES (?, ?, ?, ?, 1)",
-                (cliente_id, nombre, telefono_str, fecha_creacion)
+                "INSERT INTO clientes (id, nombre, telefono, cedula, direccion, ciudad, fecha_creacion, activo) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+                (cliente_id, nombre, telefono_str, cedula_str, direccion_str, ciudad_str, fecha_creacion)
             )
             conn.commit()
         finally:
@@ -424,11 +545,14 @@ class DatabaseManager:
             "id": cliente_id,
             "nombre": nombre,
             "telefono": telefono_str,
+            "cedula": cedula_str,
+            "direccion": direccion_str,
+            "ciudad": ciudad_str,
             "fecha_creacion": fecha_creacion,
             "activo": True
         }
     
-    def actualizar_cliente(self, cliente_id: str, nombre: str = None, telefono: str = None) -> bool:
+    def actualizar_cliente(self, cliente_id: str, nombre: str = None, telefono: str = None, cedula: str = None, direccion: str = None, ciudad: str = None) -> bool:
         """Actualiza datos de un cliente"""
         conn = self.get_connection()
         try:
@@ -442,6 +566,15 @@ class DatabaseManager:
             if telefono is not None:
                 updates.append("telefono = ?")
                 params.append(telefono)
+            if cedula is not None:
+                updates.append("cedula = ?")
+                params.append(cedula)
+            if direccion is not None:
+                updates.append("direccion = ?")
+                params.append(direccion)
+            if ciudad is not None:
+                updates.append("ciudad = ?")
+                params.append(ciudad)
                 
             if not updates:
                 return True
@@ -1125,13 +1258,19 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def crear_movimiento_proveedor(self, proveedor_id: str, tipo: str, descripcion: str, monto: float, fecha: str = None) -> Dict[str, Any]:
-        """Crea un nuevo movimiento de proveedor (factura o pago)"""
+    def crear_movimiento_proveedor(self, proveedor_id: str, tipo: str, descripcion: str, monto: float, fecha: str = None, items: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+        """Crea un nuevo movimiento de proveedor (factura o pago).
+
+        Si `tipo == 'factura'` e `items` se provee (opción facturas_sumar_stock activa),
+        suma stock a cada producto y registra movimientos de tipo 'compra' en la misma transacción.
+        Cada item: {"producto_id": str, "cantidad": int, "precio_compra": float|None}
+        """
         movimiento_id = str(uuid.uuid4())
         if fecha is None:
             fecha = datetime.now().strftime("%Y-%m-%d")
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
+        items_aplicados = []
+
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
@@ -1139,7 +1278,40 @@ class DatabaseManager:
                 "INSERT INTO movimientos_proveedores (id, proveedor_id, tipo, descripcion, monto, fecha, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (movimiento_id, proveedor_id, tipo, descripcion, float(monto), fecha, timestamp)
             )
+
+            # Solo cuando viene el detalle de productos (factura con opción de stock activa)
+            if tipo == "factura" and items:
+                for item in items:
+                    producto_id = item.get("producto_id")
+                    if not producto_id:
+                        continue
+                    cantidad = int(item.get("cantidad") or 0)
+                    if cantidad <= 0:
+                        continue
+                    cursor.execute("SELECT stock FROM productos WHERE id = ? AND activo = 1", (producto_id,))
+                    prod = cursor.fetchone()
+                    if not prod:
+                        raise ValueError("Producto no encontrado o inactivo en factura")
+                    old_stock = int(prod["stock"])
+                    new_stock = old_stock + cantidad
+                    cursor.execute("UPDATE productos SET stock = ? WHERE id = ?", (new_stock, producto_id))
+
+                    # Actualizar costo de compra solo si se envió explícitamente
+                    precio_compra = item.get("precio_compra")
+                    if precio_compra is not None:
+                        cursor.execute("UPDATE productos SET precio_compra = ? WHERE id = ?", (float(precio_compra), producto_id))
+
+                    nota_item = f"Compra a proveedor {descripcion[:80]}" if descripcion else "Compra"
+                    self._insertar_stock_movimiento(
+                        cursor, producto_id, "compra", cantidad, new_stock,
+                        nota=nota_item, referencia_id=movimiento_id
+                    )
+                    items_aplicados.append({"producto_id": producto_id, "cantidad": cantidad, "stock_resultante": new_stock})
+
             conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
         finally:
             conn.close()
         
@@ -1152,7 +1324,8 @@ class DatabaseManager:
             "descripcion": descripcion,
             "monto": float(monto),
             "fecha": fecha,
-            "timestamp": timestamp
+            "timestamp": timestamp,
+            "items_aplicados": items_aplicados
         }
     
     # ==================== RESÚMENES PROVEEDORES ====================
@@ -1368,8 +1541,8 @@ class DatabaseManager:
             else:
                 q = f"%{query.strip().lower()}%"
                 cursor.execute(
-                    "SELECT * FROM productos WHERE activo = 1 AND (LOWER(nombre) LIKE ? OR LOWER(categoria) LIKE ? OR LOWER(referencia) LIKE ?) ORDER BY nombre ASC LIMIT 50",
-                    (q, q, q)
+                    "SELECT * FROM productos WHERE activo = 1 AND (LOWER(nombre) LIKE ? OR LOWER(categoria) LIKE ? OR LOWER(referencia) LIKE ? OR LOWER(codigo_barras) LIKE ?) ORDER BY nombre ASC LIMIT 50",
+                    (q, q, q, q)
                 )
             rows = cursor.fetchall()
             
@@ -1401,19 +1574,68 @@ class DatabaseManager:
         producto['activo'] = bool(producto['activo'])
         return producto
 
-    def crear_producto(self, nombre: str, categoria: str = "", precio_compra: float = 0, precio_venta: float = 0, stock: int = 0, stock_minimo: int = 0, referencia: str = None) -> Dict[str, Any]:
+    def _codigo_barras_en_uso(self, codigo: str, exclude_id: str = None) -> Optional[str]:
+        """Devuelve el id de un producto activo que ya usa ese código de barras, si existe."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            if exclude_id:
+                cursor.execute(
+                    "SELECT id FROM productos WHERE activo = 1 AND codigo_barras = ? AND id != ? LIMIT 1",
+                    (codigo, exclude_id)
+                )
+            else:
+                cursor.execute(
+                    "SELECT id FROM productos WHERE activo = 1 AND codigo_barras = ? LIMIT 1",
+                    (codigo,)
+                )
+            row = cursor.fetchone()
+            return row["id"] if row else None
+        finally:
+            conn.close()
+
+    def buscar_producto_por_codigo(self, codigo: str) -> Optional[Dict[str, Any]]:
+        """Busca un producto por código de barras exacto (match único)."""
+        codigo_normalizado = normalizar_codigo_barras(codigo)
+        if not codigo_normalizado:
+            return None
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM productos WHERE activo = 1 AND codigo_barras = ? LIMIT 1",
+                (codigo_normalizado,)
+            )
+            row = cursor.fetchone()
+        finally:
+            conn.close()
+        if not row:
+            return None
+        producto = dict(row)
+        producto['activo'] = bool(producto['activo'])
+        return producto
+
+    def crear_producto(self, nombre: str, categoria: str = "", precio_compra: float = 0, precio_venta: float = 0, stock: int = 0, stock_minimo: int = 0, referencia: str = None, codigo_barras: str = None) -> Dict[str, Any]:
         """Crea un producto de inventario."""
         producto_id = str(uuid.uuid4())
         fecha_creacion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        codigo_barras = normalizar_codigo_barras(codigo_barras)
 
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO productos (id, nombre, categoria, precio_compra, precio_venta, stock, stock_minimo, fecha_creacion, activo, referencia) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)",
-                (producto_id, nombre, categoria, float(precio_compra), float(precio_venta), int(stock), int(stock_minimo), fecha_creacion, referencia)
+                "INSERT INTO productos (id, nombre, categoria, precio_compra, precio_venta, stock, stock_minimo, fecha_creacion, activo, referencia, codigo_barras) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+                (producto_id, nombre, categoria, float(precio_compra), float(precio_venta), int(stock), int(stock_minimo), fecha_creacion, referencia, codigo_barras)
+            )
+            # Movimiento de stock inicial
+            self._insertar_stock_movimiento(
+                cursor, producto_id, "inicial", int(stock), int(stock),
+                nota="Stock inicial al crear el producto", referencia_id=producto_id
             )
             conn.commit()
+        except sqlite3.IntegrityError as e:
+            raise ValueError("Ya existe un producto con ese código de barras") from e
         finally:
             conn.close()
         
@@ -1429,10 +1651,11 @@ class DatabaseManager:
             "stock_minimo": int(stock_minimo),
             "fecha_creacion": fecha_creacion,
             "activo": True,
-            "referencia": referencia
+            "referencia": referencia,
+            "codigo_barras": codigo_barras
         }
 
-    def actualizar_producto(self, producto_id: str, nombre: str = None, categoria: str = None, precio_compra: float = None, precio_venta: float = None, stock: int = None, stock_minimo: int = None, referencia: str = None) -> bool:
+    def actualizar_producto(self, producto_id: str, nombre: str = None, categoria: str = None, precio_compra: float = None, precio_venta: float = None, stock: int = None, stock_minimo: int = None, referencia: str = None, codigo_barras: str = None) -> bool:
         """Actualiza un producto."""
         conn = self.get_connection()
         try:
@@ -1461,6 +1684,11 @@ class DatabaseManager:
             if referencia is not None:
                 updates.append("referencia = ?")
                 params.append(referencia)
+            if codigo_barras == "":
+                updates.append("codigo_barras = NULL")
+            elif codigo_barras is not None:
+                updates.append("codigo_barras = ?")
+                params.append(normalizar_codigo_barras(codigo_barras))
                 
             if not updates:
                 return True
@@ -1469,6 +1697,8 @@ class DatabaseManager:
             cursor.execute(f"UPDATE productos SET {', '.join(updates)} WHERE id = ?", params)
             rows_affected = cursor.rowcount
             conn.commit()
+        except sqlite3.IntegrityError as e:
+            raise ValueError("Ya existe un producto con ese código de barras") from e
         finally:
             conn.close()
         
@@ -1534,6 +1764,12 @@ class DatabaseManager:
                 (venta_id, producto_id, prod["nombre"], int(cantidad), precio, total, fecha, timestamp, nota)
             )
             
+            # 4. Registrar movimiento de stock (salida)
+            self._insertar_stock_movimiento(
+                cursor, producto_id, "venta", -int(cantidad), stock_actual - int(cantidad),
+                nota=nota or "Venta", referencia_id=venta_id
+            )
+            
             conn.commit()
             self._invalidate_cache()
             
@@ -1569,30 +1805,33 @@ class DatabaseManager:
             ventas_hoy_df = ventas_df[ventas_df["fecha"] == hoy]
         else:
             ventas_hoy_df = pd.DataFrame()
-            
-        stock_bajo = []
-        for _, producto in productos_df.iterrows():
-            stock = int(producto.get("stock") or 0)
-            stock_minimo = int(producto.get("stock_minimo") or 0)
-            if stock <= stock_minimo:
-                stock_bajo.append({
-                    "id": producto["id"],
-                    "nombre": producto["nombre"],
-                    "stock": stock,
-                    "stock_minimo": stock_minimo,
-                    "referencia": producto.get("referencia", "")
-                })
 
-        valor_inventario = 0.0
-        for _, producto in productos_df.iterrows():
-            valor_inventario += float(producto.get("precio_compra") or 0) * int(producto.get("stock") or 0)
+        stock_bajo = []
+        if len(productos_df) > 0 and "stock" in productos_df.columns:
+            stock_col = productos_df["stock"].fillna(0).astype(int)
+            minimo_col = productos_df["stock_minimo"].fillna(0).astype(int)
+            mask = stock_col <= minimo_col
+            if mask.any():
+                sel = productos_df[mask][["id", "nombre", "referencia"]].copy()
+                sel["stock"] = stock_col[mask].values
+                sel["stock_minimo"] = minimo_col[mask].values
+                stock_bajo = sel.head(10).to_dict("records")
+
+        if len(productos_df) > 0 and "precio_compra" in productos_df.columns:
+            valor_inventario = float((productos_df["precio_compra"].fillna(0) * productos_df["stock"].fillna(0)).sum())
+        else:
+            valor_inventario = 0.0
+
+        ventas_hoy_total = float(ventas_hoy_df["total"].sum()) if len(ventas_hoy_df) > 0 and "total" in ventas_hoy_df.columns else 0.0
+        unidades_vendidas_hoy = int(ventas_hoy_df["cantidad"].sum()) if len(ventas_hoy_df) > 0 and "cantidad" in ventas_hoy_df.columns else 0
 
         return {
             "productos_activos": len(productos_df),
             "valor_inventario": float(valor_inventario),
-            "ventas_hoy": float(ventas_hoy_df["total"].sum()) if len(ventas_hoy_df) > 0 and "total" in ventas_hoy_df.columns else 0.0,
-            "unidades_vendidas_hoy": int(ventas_hoy_df["cantidad"].sum()) if len(ventas_hoy_df) > 0 and "cantidad" in ventas_hoy_df.columns else 0,
+            "ventas_hoy": ventas_hoy_total,
+            "unidades_vendidas_hoy": unidades_vendidas_hoy,
             "stock_bajo": stock_bajo[:10],
+            "stock_bajo_count": len(stock_bajo),
         }
 
     # ==================== CARACTERÍSTICAS DELUXE ADICIONALES ====================
@@ -1615,7 +1854,15 @@ class DatabaseManager:
             # 2. Devolver la cantidad al stock del producto
             cursor.execute("UPDATE productos SET stock = stock + ? WHERE id = ?", (cantidad, producto_id))
             
-            # 3. Eliminar la venta
+            # 3. Registrar movimiento de stock (reingreso por anulación)
+            cursor.execute("SELECT stock FROM productos WHERE id = ?", (producto_id,))
+            stock_row = cursor.fetchone()
+            self._insertar_stock_movimiento(
+                cursor, producto_id, "anulacion", int(cantidad), int(stock_row["stock"]) if stock_row else cantidad,
+                nota="Anulación de venta", referencia_id=venta_id
+            )
+            
+            # 4. Eliminar la venta
             cursor.execute("DELETE FROM ventas WHERE id = ?", (venta_id,))
             
             conn.commit()
@@ -1641,10 +1888,17 @@ class DatabaseManager:
             if not prod:
                 return False
                 
-            new_stock = max(0, int(prod["stock"]) + cantidad_cambio)
+            old_stock = int(prod["stock"])
+            new_stock = max(0, old_stock + cantidad_cambio)
             
             # Actualizar stock
             cursor.execute("UPDATE productos SET stock = ? WHERE id = ?", (new_stock, producto_id))
+            
+            # Registrar movimiento de stock (con motivo)
+            self._insertar_stock_movimiento(
+                cursor, producto_id, "ajuste", new_stock - old_stock, new_stock,
+                nota=nota or "Ajuste de inventario", referencia_id=None
+            )
             
             conn.commit()
             self._invalidate_cache()
@@ -1696,6 +1950,34 @@ class DatabaseManager:
         finally:
             if conn:
                 conn.close()
+
+    def generar_numero_recibo(self) -> int:
+        """Genera y consume el siguiente consecutivo de recibo de venta (atómico).
+
+        Usa BEGIN IMMEDIATE para que la lectura y escritura del contador ocurran
+        dentro de una misma transacción, evitando duplicados aunque dos ventas
+        se registren simultáneamente. El número identifica la venta, no la
+        impresión: se consume al crear la operación.
+        """
+        conn = self.get_connection()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT valor FROM config WHERE clave = 'recibo_consecutivo'"
+            ).fetchone()
+            actual = int(row["valor"]) if row and row["valor"] else 0
+            siguiente = actual + 1
+            conn.execute(
+                "INSERT OR REPLACE INTO config (clave, valor, descripcion) VALUES (?, ?, ?)",
+                ("recibo_consecutivo", str(siguiente), "Consecutivo de recibo de venta"),
+            )
+            conn.commit()
+            return siguiente
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
     
     def is_trial_active(self) -> Dict[str, Any]:
         """

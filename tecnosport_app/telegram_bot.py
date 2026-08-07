@@ -174,6 +174,9 @@ def _format_cliente_detalle(c) -> str:
         f"===========================\n"
         f"📛 *Nombre:* {c.nombre}\n"
         f"📞 *Teléfono:* {c.telefono or 'No registrado'}\n"
+        f"🪪 *Cédula:* {getattr(c, 'cedula', None) or 'No registrada'}\n"
+        f"📍 *Ciudad:* {getattr(c, 'ciudad', None) or 'No registrada'}\n"
+        f"🏠 *Dirección:* {getattr(c, 'direccion', None) or 'No registrada'}\n"
         f"📌 *Estado:* {estado}\n"
         f"---------------------------\n"
         f"💵 *Saldo Pendiente:* `{format_currency(c.saldo)}`\n"
@@ -286,6 +289,7 @@ def role_required(*allowed_roles: str):
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton("📥 Abono"), KeyboardButton("📤 Préstamo"), KeyboardButton("🧾 Gasto")],
+        [KeyboardButton("💸 Pago Proveedor"), KeyboardButton("📄 Factura Proveedor")],
         [KeyboardButton("🔍 Buscar"), KeyboardButton("👥 Clientes"), KeyboardButton("🏢 Proveedores")],
         [KeyboardButton("💰 Caja"), KeyboardButton("📊 Reportes")],
     ],
@@ -685,6 +689,8 @@ async def saldo_proveedor_command(update: Update, context: ContextTypes.DEFAULT_
 ABONO_BUSCAR, ABONO_SEL, ABONO_MONTO, ABONO_DESC, ABONO_CONF = range(5)
 PRESTAMO_BUSCAR, PRESTAMO_SEL, PRESTAMO_MONTO, PRESTAMO_DESC, PRESTAMO_CONF = range(5, 10)
 GASTO_CATEGORIA, GASTO_MONTO, GASTO_DESC, GASTO_CONF = range(10, 14)
+PAGO_PROV_BUSCAR, PAGO_PROV_SEL, PAGO_PROV_MONTO, PAGO_PROV_DESC, PAGO_PROV_CONF = range(14, 19)
+FACT_PROV_BUSCAR, FACT_PROV_SEL, FACT_PROV_MONTO, FACT_PROV_DESC, FACT_PROV_CONF = range(19, 24)
 
 # Timeout de conversacion: 5 minutos
 CONV_TIMEOUT = 300
@@ -727,6 +733,21 @@ def _build_cliente_keyboard(clientes, prefix: str):
     if len(clientes) > 10:
         keyboard.append([InlineKeyboardButton(
             f"Subio {len(clientes) - 10} mas - se mas especifico",
+            callback_data=f"{prefix}_more"
+        )])
+    return InlineKeyboardMarkup(keyboard)
+
+def _build_proveedor_keyboard(proveedores, prefix: str):
+    """Construye un teclado inline con proveedores para seleccion."""
+    keyboard = []
+    for p in proveedores[:10]:
+        keyboard.append([InlineKeyboardButton(
+            f"{p.nombre} - Deuda: ${p.saldo:,.0f}".replace(",", "."),
+            callback_data=f"{prefix}_sel:{p.id}"
+        )])
+    if len(proveedores) > 10:
+        keyboard.append([InlineKeyboardButton(
+            f"Subio {len(proveedores) - 10} mas - se mas especifico",
             callback_data=f"{prefix}_more"
         )])
     return InlineKeyboardMarkup(keyboard)
@@ -878,13 +899,15 @@ async def abono_seleccionar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             c_data = db.get_cliente_by_id(cliente_id)
             from collections import namedtuple
-            ClienteTuple = namedtuple("Cliente", ["id", "nombre", "saldo", "telefono", "activo", "total_prestado", "total_abonado", "dias_sin_abonar"])
+            ClienteTuple = namedtuple("Cliente", ["id", "nombre", "saldo", "telefono", "activo", "total_prestado", "total_abonado", "dias_sin_abonar", "cedula", "direccion", "ciudad"])
             cliente = ClienteTuple(
                 id=c_data['id'], nombre=c_data['nombre'], saldo=c_data.get('saldo', 0),
                 telefono=c_data.get('telefono', ''), activo=c_data.get('activo', True),
                 total_prestado=c_data.get('total_prestado', 0),
                 total_abonado=c_data.get('total_abonado', 0),
-                dias_sin_abonar=c_data.get('dias_sin_abonar', 0)
+                dias_sin_abonar=c_data.get('dias_sin_abonar', 0),
+                cedula=c_data.get('cedula', ''), direccion=c_data.get('direccion', ''),
+                ciudad=c_data.get('ciudad', '')
             )
         except Exception as e:
             logger.error(f"Error obteniendo cliente: {e}")
@@ -1073,13 +1096,15 @@ async def prestamo_seleccionar(update: Update, context: ContextTypes.DEFAULT_TYP
         try:
             c_data = db.get_cliente_by_id(cliente_id)
             from collections import namedtuple
-            ClienteTuple = namedtuple("Cliente", ["id", "nombre", "saldo", "telefono", "activo", "total_prestado", "total_abonado", "dias_sin_abonar"])
+            ClienteTuple = namedtuple("Cliente", ["id", "nombre", "saldo", "telefono", "activo", "total_prestado", "total_abonado", "dias_sin_abonar", "cedula", "direccion", "ciudad"])
             cliente = ClienteTuple(
                 id=c_data['id'], nombre=c_data['nombre'], saldo=c_data.get('saldo', 0),
                 telefono=c_data.get('telefono', ''), activo=c_data.get('activo', True),
                 total_prestado=c_data.get('total_prestado', 0),
                 total_abonado=c_data.get('total_abonado', 0),
-                dias_sin_abonar=c_data.get('dias_sin_abonar', 0)
+                dias_sin_abonar=c_data.get('dias_sin_abonar', 0),
+                cedula=c_data.get('cedula', ''), direccion=c_data.get('direccion', ''),
+                ciudad=c_data.get('ciudad', '')
             )
         except Exception as e:
             logger.error(f"Error obteniendo cliente: {e}")
@@ -1325,6 +1350,399 @@ async def gasto_confirmar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error registrando gasto: {e}", exc_info=True)
         await query.edit_message_text("Error inesperado al registrar el gasto.")
+
+    context.user_data.clear()
+    return ConversationHandler.END
+
+
+# ==================== FSM: PAGO PROVEEDOR ====================
+
+@role_required("super_admin", "admin")
+async def pago_proveedor_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Inicia el flujo de registro de pago (abono) a proveedor."""
+    context.user_data.clear()
+    await update.message.reply_text(
+        "Registro de Pago a Proveedor - Paso 1/4\n\n"
+        "Escribe el nombre o telefono del proveedor:",
+        parse_mode="Markdown",
+        reply_markup=_build_cancel_keyboard()
+    )
+    return PAGO_PROV_BUSCAR
+
+async def pago_proveedor_buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Busca proveedores por nombre y muestra resultados para seleccionar."""
+    query = update.message.text.strip()
+    cancel_btn = _build_cancel_keyboard()
+    try:
+        proveedores = proveedor_repo.buscar(query)
+        if not proveedores:
+            await update.message.reply_text(
+                f"No se encontro ningun proveedor para \"{query}\".\n\n"
+                "Escribe otro nombre o usa /cancelar para salir.",
+                parse_mode="Markdown",
+                reply_markup=cancel_btn
+            )
+            return PAGO_PROV_BUSCAR
+
+        keyboard = _build_proveedor_keyboard(proveedores, "pago_prov")
+        await update.message.reply_text(
+            f"{len(proveedores)} proveedor(es) encontrado(s). Selecciona uno:",
+            parse_mode="Markdown",
+            reply_markup=keyboard
+        )
+        context.user_data['resultados'] = {str(p.id): p for p in proveedores}
+        return PAGO_PROV_SEL
+    except Exception as e:
+        logger.error(f"Error buscando proveedores: {e}", exc_info=True)
+        await update.message.reply_text("Error buscando proveedores.", reply_markup=cancel_btn)
+        return PAGO_PROV_BUSCAR
+
+async def pago_proveedor_seleccionar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Callback cuando el usuario selecciona un proveedor de la lista."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    if data == "pago_prov_more":
+        cancel_btn = _build_cancel_keyboard()
+        await query.edit_message_text(
+            "Escribe un nombre mas especifico para encontrar al proveedor:",
+            reply_markup=cancel_btn
+        )
+        return PAGO_PROV_BUSCAR
+
+    proveedor_id = data.split(":")[1]
+    resultados = context.user_data.get('resultados', {})
+    proveedor = resultados.get(proveedor_id)
+    if not proveedor:
+        try:
+            p_data = db.get_proveedor_by_id(proveedor_id)
+            resumen = db.get_resumen_proveedor(proveedor_id)
+            from collections import namedtuple
+            ProveedorTuple = namedtuple("Proveedor", ["id", "nombre", "saldo", "telefono", "activo", "total_facturas", "total_pagado"])
+            proveedor = ProveedorTuple(
+                id=p_data['id'], nombre=p_data['nombre'],
+                saldo=float(resumen.get('saldo', 0)),
+                telefono=p_data.get('telefono', ''), activo=p_data.get('activo', True),
+                total_facturas=float(resumen.get('total_facturas', 0)),
+                total_pagado=float(resumen.get('total_pagado', 0))
+            )
+        except Exception as e:
+            logger.error(f"Error obteniendo proveedor: {e}")
+            await query.edit_message_text("Proveedor no encontrado.")
+            return ConversationHandler.END
+
+    context.user_data['proveedor'] = proveedor
+    context.user_data['proveedor_id'] = proveedor.id
+    await query.edit_message_text(
+        f"Pago a Proveedor - Paso 2/4\n\n"
+        f"Proveedor: {proveedor.nombre}\n"
+        f"Deuda actual: `{format_currency(proveedor.saldo)}`\n\n"
+        f"Cual es el monto del pago?",
+        parse_mode="Markdown",
+        reply_markup=_build_cancel_keyboard()
+    )
+    return PAGO_PROV_MONTO
+
+async def pago_proveedor_monto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Recibe el monto del pago."""
+    text = update.message.text.strip()
+    cancel_btn = _build_cancel_keyboard()
+    try:
+        monto = float(text.replace("$", "").replace(".", "").replace(",", ".").strip())
+        if monto <= 0:
+            raise ValueError
+    except ValueError:
+        await update.message.reply_text(
+            "Monto invalido. Ingresa un numero valido mayor a 0.\nEjemplo: 50000",
+            parse_mode="Markdown",
+            reply_markup=cancel_btn
+        )
+        return PAGO_PROV_MONTO
+
+    context.user_data['monto'] = monto
+    proveedor = context.user_data['proveedor']
+    await update.message.reply_text(
+        f"Pago a Proveedor - Paso 3/4\n\n"
+        f"Proveedor: {proveedor.nombre}\n"
+        f"Monto: `{format_currency(monto)}`\n\n"
+        f"Descripcion (opcional):\n"
+        f"Escribe una descripcion o un guion (-) para omitir:",
+        parse_mode="Markdown",
+        reply_markup=_build_cancel_keyboard()
+    )
+    return PAGO_PROV_DESC
+
+async def pago_proveedor_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Recibe la descripcion del pago y muestra resumen para confirmar."""
+    desc = update.message.text.strip()
+    if desc == "-":
+        desc = ""
+
+    context.user_data['descripcion'] = desc
+    proveedor = context.user_data['proveedor']
+    monto = context.user_data['monto']
+    deuda_nueva = float(proveedor.saldo) - monto
+
+    texto = (
+        f"Resumen del Pago\n"
+        f"-----------------------\n"
+        f"Proveedor: {proveedor.nombre}\n"
+        f"Monto: `{format_currency(monto)}`\n"
+        f"Descripcion: {desc or '-'}\n"
+        f"-----------------------\n"
+        f"Deuda anterior: `{format_currency(float(proveedor.saldo))}`\n"
+        f"Deuda restante: `{format_currency(deuda_nueva)}`\n"
+        f"-----------------------\n"
+        f"Confirmar el registro?"
+    )
+    await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=_build_confirm_keyboard())
+    return PAGO_PROV_CONF
+
+async def pago_proveedor_confirmar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Callback de confirmacion - ejecuta el pago via API."""
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "confirm_no":
+        context.user_data.clear()
+        await query.edit_message_text("Operacion cancelada.")
+        return ConversationHandler.END
+
+    proveedor = context.user_data['proveedor']
+    monto = context.user_data['monto']
+    descripcion = context.user_data.get('descripcion', '')
+
+    await query.edit_message_text("Registrando pago...")
+
+    try:
+        result = await _call_api("POST", "/api/movimientos-proveedor", {
+            "proveedor_id": str(proveedor.id),
+            "tipo": "pago",
+            "monto": monto,
+            "descripcion": descripcion or "Pago registrado por Telegram"
+        })
+        data = result.get("data", result)
+        resumen = db.get_resumen_proveedor(str(proveedor.id))
+        deuda_nueva = resumen.get("saldo", float(proveedor.saldo) - monto)
+
+        comprobante = (
+            f"PAGO REGISTRADO EXITOSAMENTE\n"
+            f"-----------------------\n"
+            f"Recibo #: `{data.get('id', '-')[:8]}...`\n"
+            f"Proveedor: {proveedor.nombre}\n"
+            f"Valor pagado: `{format_currency(monto)}`\n"
+            f"Descripcion: {descripcion or '-'}\n"
+            f"-----------------------\n"
+            f"Deuda anterior: `{format_currency(float(proveedor.saldo))}`\n"
+            f"Deuda actual: `{format_currency(deuda_nueva)}`\n"
+            f"-----------------------\n"
+            f"{datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
+            f"-----------------------\n"
+            f"/start - Menu principal"
+        )
+        await query.edit_message_text(comprobante, parse_mode="Markdown")
+    except ValueError as e:
+        await query.edit_message_text(f"Error al registrar pago:\n{str(e)}", parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error registrando pago: {e}", exc_info=True)
+        await query.edit_message_text("Error inesperado al registrar el pago.")
+
+    context.user_data.clear()
+    return ConversationHandler.END
+
+# ==================== FSM: FACTURA PROVEEDOR ====================
+
+@role_required("super_admin", "admin")
+async def factura_proveedor_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Inicia el flujo de registro de factura (deuda) de proveedor."""
+    context.user_data.clear()
+    await update.message.reply_text(
+        "Registro de Factura de Proveedor - Paso 1/4\n\n"
+        "Escribe el nombre o telefono del proveedor:",
+        parse_mode="Markdown",
+        reply_markup=_build_cancel_keyboard()
+    )
+    return FACT_PROV_BUSCAR
+
+async def factura_proveedor_buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Busca proveedores por nombre para factura."""
+    query = update.message.text.strip()
+    cancel_btn = _build_cancel_keyboard()
+    try:
+        proveedores = proveedor_repo.buscar(query)
+        if not proveedores:
+            await update.message.reply_text(
+                f"No se encontro ningun proveedor para \"{query}\".\n\n"
+                "Escribe otro nombre o usa /cancelar para salir.",
+                parse_mode="Markdown",
+                reply_markup=cancel_btn
+            )
+            return FACT_PROV_BUSCAR
+
+        keyboard = _build_proveedor_keyboard(proveedores, "fact_prov")
+        await update.message.reply_text(
+            f"{len(proveedores)} proveedor(es) encontrado(s). Selecciona uno:",
+            parse_mode="Markdown",
+            reply_markup=keyboard
+        )
+        context.user_data['resultados'] = {str(p.id): p for p in proveedores}
+        return FACT_PROV_SEL
+    except Exception as e:
+        logger.error(f"Error buscando proveedores: {e}", exc_info=True)
+        await update.message.reply_text("Error buscando proveedores.", reply_markup=cancel_btn)
+        return FACT_PROV_BUSCAR
+
+async def factura_proveedor_seleccionar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Callback cuando el usuario selecciona un proveedor para factura."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    if data == "fact_prov_more":
+        cancel_btn = _build_cancel_keyboard()
+        await query.edit_message_text(
+            "Escribe un nombre mas especifico para encontrar al proveedor:",
+            reply_markup=cancel_btn
+        )
+        return FACT_PROV_BUSCAR
+
+    proveedor_id = data.split(":")[1]
+    resultados = context.user_data.get('resultados', {})
+    proveedor = resultados.get(proveedor_id)
+    if not proveedor:
+        try:
+            p_data = db.get_proveedor_by_id(proveedor_id)
+            resumen = db.get_resumen_proveedor(proveedor_id)
+            from collections import namedtuple
+            ProveedorTuple = namedtuple("Proveedor", ["id", "nombre", "saldo", "telefono", "activo", "total_facturas", "total_pagado"])
+            proveedor = ProveedorTuple(
+                id=p_data['id'], nombre=p_data['nombre'],
+                saldo=float(resumen.get('saldo', 0)),
+                telefono=p_data.get('telefono', ''), activo=p_data.get('activo', True),
+                total_facturas=float(resumen.get('total_facturas', 0)),
+                total_pagado=float(resumen.get('total_pagado', 0))
+            )
+        except Exception as e:
+            logger.error(f"Error obteniendo proveedor: {e}")
+            await query.edit_message_text("Proveedor no encontrado.")
+            return ConversationHandler.END
+
+    context.user_data['proveedor'] = proveedor
+    context.user_data['proveedor_id'] = proveedor.id
+    await query.edit_message_text(
+        f"Factura de Proveedor - Paso 2/4\n\n"
+        f"Proveedor: {proveedor.nombre}\n"
+        f"Deuda actual: `{format_currency(proveedor.saldo)}`\n\n"
+        f"Cual es el monto de la factura?",
+        parse_mode="Markdown",
+        reply_markup=_build_cancel_keyboard()
+    )
+    return FACT_PROV_MONTO
+
+async def factura_proveedor_monto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Recibe el monto de la factura."""
+    text = update.message.text.strip()
+    cancel_btn = _build_cancel_keyboard()
+    try:
+        monto = float(text.replace("$", "").replace(".", "").replace(",", ".").strip())
+        if monto <= 0:
+            raise ValueError
+    except ValueError:
+        await update.message.reply_text(
+            "Monto invalido. Ingresa un numero valido mayor a 0.\nEjemplo: 200000",
+            parse_mode="Markdown",
+            reply_markup=cancel_btn
+        )
+        return FACT_PROV_MONTO
+
+    context.user_data['monto'] = monto
+    proveedor = context.user_data['proveedor']
+    await update.message.reply_text(
+        f"Factura de Proveedor - Paso 3/4\n\n"
+        f"Proveedor: {proveedor.nombre}\n"
+        f"Monto: `{format_currency(monto)}`\n\n"
+        f"Descripcion (opcional):\n"
+        f"Escribe una descripcion o un guion (-) para omitir:",
+        parse_mode="Markdown",
+        reply_markup=_build_cancel_keyboard()
+    )
+    return FACT_PROV_DESC
+
+async def factura_proveedor_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Recibe la descripcion y muestra resumen de la factura."""
+    desc = update.message.text.strip()
+    if desc == "-":
+        desc = ""
+
+    context.user_data['descripcion'] = desc
+    proveedor = context.user_data['proveedor']
+    monto = context.user_data['monto']
+    deuda_nueva = float(proveedor.saldo) + monto
+
+    texto = (
+        f"Resumen de la Factura\n"
+        f"-----------------------\n"
+        f"Proveedor: {proveedor.nombre}\n"
+        f"Monto: `{format_currency(monto)}`\n"
+        f"Descripcion: {desc or '-'}\n"
+        f"-----------------------\n"
+        f"Deuda anterior: `{format_currency(float(proveedor.saldo))}`\n"
+        f"Deuda nueva: `{format_currency(deuda_nueva)}`\n"
+        f"-----------------------\n"
+        f"Confirmar el registro?"
+    )
+    await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=_build_confirm_keyboard())
+    return FACT_PROV_CONF
+
+async def factura_proveedor_confirmar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ejecuta el registro de la factura via API."""
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "confirm_no":
+        context.user_data.clear()
+        await query.edit_message_text("Operacion cancelada.")
+        return ConversationHandler.END
+
+    proveedor = context.user_data['proveedor']
+    monto = context.user_data['monto']
+    descripcion = context.user_data.get('descripcion', '')
+
+    await query.edit_message_text("Registrando factura...")
+
+    try:
+        result = await _call_api("POST", "/api/movimientos-proveedor", {
+            "proveedor_id": str(proveedor.id),
+            "tipo": "factura",
+            "monto": monto,
+            "descripcion": descripcion or "Factura registrada por Telegram"
+        })
+        data = result.get("data", result)
+        resumen = db.get_resumen_proveedor(str(proveedor.id))
+        deuda_nueva = resumen.get("saldo", float(proveedor.saldo) + monto)
+
+        comprobante = (
+            f"FACTURA REGISTRADA EXITOSAMENTE\n"
+            f"-----------------------\n"
+            f"Recibo #: `{data.get('id', '-')[:8]}...`\n"
+            f"Proveedor: {proveedor.nombre}\n"
+            f"Monto: `{format_currency(monto)}`\n"
+            f"Descripcion: {descripcion or '-'}\n"
+            f"-----------------------\n"
+            f"Deuda anterior: `{format_currency(float(proveedor.saldo))}`\n"
+            f"Deuda actual: `{format_currency(deuda_nueva)}`\n"
+            f"-----------------------\n"
+            f"{datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
+            f"-----------------------\n"
+            f"/start - Menu principal"
+        )
+        await query.edit_message_text(comprobante, parse_mode="Markdown")
+    except ValueError as e:
+        await query.edit_message_text(f"Error al registrar factura:\n{str(e)}", parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error registrando factura: {e}", exc_info=True)
+        await query.edit_message_text("Error inesperado al registrar la factura.")
 
     context.user_data.clear()
     return ConversationHandler.END
@@ -1630,9 +2048,45 @@ def _registrar_handlers(application):
         name="gasto_conversation",
     )
 
+    pago_prov_conv = ConversationHandler(
+        entry_points=[
+            CommandHandler("pago_proveedor", pago_proveedor_entry),
+            MessageHandler(filters.Regex("^💸 Pago Proveedor$"), pago_proveedor_entry)
+        ],
+        states={
+            PAGO_PROV_BUSCAR: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_proveedor_buscar)],
+            PAGO_PROV_SEL: [CallbackQueryHandler(pago_proveedor_seleccionar, pattern="^pago_prov_")],
+            PAGO_PROV_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_proveedor_monto)],
+            PAGO_PROV_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_proveedor_desc)],
+            PAGO_PROV_CONF: [CallbackQueryHandler(pago_proveedor_confirmar, pattern="^(confirm_yes|confirm_no)$")],
+        },
+        fallbacks=cancel_fallbacks,
+        conversation_timeout=CONV_TIMEOUT,
+        name="pago_proveedor_conversation",
+    )
+
+    fact_prov_conv = ConversationHandler(
+        entry_points=[
+            CommandHandler("factura_proveedor", factura_proveedor_entry),
+            MessageHandler(filters.Regex("^📄 Factura Proveedor$"), factura_proveedor_entry)
+        ],
+        states={
+            FACT_PROV_BUSCAR: [MessageHandler(filters.TEXT & ~filters.COMMAND, factura_proveedor_buscar)],
+            FACT_PROV_SEL: [CallbackQueryHandler(factura_proveedor_seleccionar, pattern="^fact_prov_")],
+            FACT_PROV_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, factura_proveedor_monto)],
+            FACT_PROV_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, factura_proveedor_desc)],
+            FACT_PROV_CONF: [CallbackQueryHandler(factura_proveedor_confirmar, pattern="^(confirm_yes|confirm_no)$")],
+        },
+        fallbacks=cancel_fallbacks,
+        conversation_timeout=CONV_TIMEOUT,
+        name="factura_proveedor_conversation",
+    )
+
     application.add_handler(abono_conv)
     application.add_handler(prestamo_conv)
     application.add_handler(gasto_conv)
+    application.add_handler(pago_prov_conv)
+    application.add_handler(fact_prov_conv)
     application.add_handler(cancel_handler)
     application.add_handler(CommandHandler("cliente", cliente_command))
     application.add_handler(CommandHandler("start", start_command))

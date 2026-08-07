@@ -22,9 +22,9 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
-from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Depends
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Depends, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from fastapi import Request
@@ -32,19 +32,23 @@ from pydantic import BaseModel
 import uvicorn
 
 # Importar módulo de base de datos
-from database import db
+from database import db, normalizar_codigo_barras
 
 # Importar esquemas y repositorios para Clientes y Proveedores
 from schemas import (
     ClienteCreate, ClienteUpdate, ClienteRead, ApiResponseCliente, ApiResponseClientesList, ApiResponseClientesConDeuda,
     ProveedorCreate, ProveedorUpdate, ProveedorRead, ApiResponseProveedor, ApiResponseProveedoresList,
     MovimientoCreate, MovimientoRead, ApiResponseMovimientosList,
-    MovimientoProveedorCreate, MovimientoProveedorRead, ApiResponseMovimientoProveedorList,
+    MovimientoProveedorCreate, MovimientoProveedorRead, ApiResponseMovimientoProveedor, ApiResponseMovimientoProveedorList,
     ApiResponseSimple,
     GastoCreate, GastoRead, ApiResponseGasto, ApiResponseGastosList,
     FlujoCajaResumen, ApiResponseFlujoCaja,
     DevolucionClienteCreate, DevolucionProveedorCreate, DevolucionRead, ApiResponseDevolucion, ApiResponseDevolucionesList,
-    TelegramUserCreate
+    TelegramUserCreate,
+    ProductoRead, ApiResponseProducto, ApiResponseProductosList, ApiResponseProductoDetalle,
+    StockMovimientoRead, ApiResponseStockMovimientosList,
+    VentaRead, ApiResponseVenta, ApiResponseVentasList,
+    StockBajoItem, InventarioStatsRead, ApiResponseInventarioStats
 )
 from repository import (
     ClienteRepository, ProveedorRepository, GastoRepository,
@@ -114,6 +118,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# Evita que el navegador cachee plantillas HTML (evita ver versiones viejas al actualizar).
+@app.middleware("http")
+async def no_cache_html_middleware(request, call_next):
+    response = await call_next(request)
+    ctype = response.headers.get("content-type", "")
+    if "text/html" in ctype:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return response
+
 # Archivos estáticos
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -146,6 +160,7 @@ class ProductoCreate(BaseModel):
     stock: Optional[int] = 0
     stock_minimo: Optional[int] = 0
     referencia: Optional[str] = None
+    codigo_barras: Optional[str] = None
 
 class ProductoUpdate(BaseModel):
     nombre: Optional[str] = None
@@ -155,6 +170,7 @@ class ProductoUpdate(BaseModel):
     stock: Optional[int] = None
     stock_minimo: Optional[int] = None
     referencia: Optional[str] = None
+    codigo_barras: Optional[str] = None
 
 class AjusteStock(BaseModel):
     cantidad_cambio: int
@@ -514,6 +530,12 @@ async def api_crear_movimiento(movimiento: MovimientoCreate):
 
         nuevo['cliente_nombre'] = cliente['nombre']
 
+        # Consecutivo de recibo: solo para ventas (préstamo tipo COMPRA).
+        # Los abonos también pasan por aquí, por eso se exige tipo == 'prestamo'.
+        nuevo['recibo_numero'] = None
+        if movimiento.tipo == 'prestamo' and tipo_op == 'COMPRA':
+            nuevo['recibo_numero'] = db.generar_numero_recibo()
+
         if tipo_op == "PRESTAMO_MERCANCIA":
             msg = "Préstamo de mercancía registrado exitosamente"
         else:
@@ -870,7 +892,7 @@ async def api_get_notificaciones():
                     "icono": "📦",
                     "titulo": f"Stock bajo: {p['nombre']}",
                     "detalle": f"Quedan {p['stock']} unidades (mínimo {p['stock_minimo']})",
-                    "url": "/inventario"
+                    "url": "/inventario?filtro=stock_bajo"
                 })
         except Exception as e:
             print(f"Error en notificaciones (stock): {e}")
@@ -963,6 +985,9 @@ import tempfile
 class ImportConfig(BaseModel):
     col_nombre: str
     col_telefono: Optional[str] = ""
+    col_cedula: Optional[str] = ""
+    col_direccion: Optional[str] = ""
+    col_ciudad: Optional[str] = ""
     col_deuda: Optional[str] = ""
     col_prestamos: Optional[str] = ""
     col_abonos: Optional[str] = ""
@@ -1015,7 +1040,7 @@ async def api_importar_preview(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Error al leer archivo: {str(e)}")
 
 @app.post("/api/importar")
-async def api_importar_datos(file: UploadFile = File(...), config: str = "{}"):
+async def api_importar_datos(file: UploadFile = File(...), config: str = Form("{}")):
     """Importa datos desde un archivo Excel"""
     import json
     
@@ -1025,6 +1050,9 @@ async def api_importar_datos(file: UploadFile = File(...), config: str = "{}"):
         
         col_nombre = config_dict.get('col_nombre', '')
         col_telefono = config_dict.get('col_telefono', '')
+        col_cedula = config_dict.get('col_cedula', '')
+        col_direccion = config_dict.get('col_direccion', '')
+        col_ciudad = config_dict.get('col_ciudad', '')
         col_deuda = config_dict.get('col_deuda', '')
         col_prestamos = config_dict.get('col_prestamos', '')
         col_abonos = config_dict.get('col_abonos', '')
@@ -1057,10 +1085,14 @@ async def api_importar_datos(file: UploadFile = File(...), config: str = "{}"):
         df = df.dropna(subset=[col_nombre], how='all')
         df = df.fillna('')
         
-        # Abrir archivo destino
-        wb = load_workbook(db.excel_path)
-        ws_clientes = wb["clientes"]
-        ws_movimientos = wb["movimientos"]
+        # Abrir archivo destino (legacy, solo para backwards-compat; si no existe se omite)
+        excel_legacy = None
+        if os.path.exists(db.excel_path):
+            try:
+                wb = load_workbook(db.excel_path)
+                excel_legacy = (wb, wb["clientes"], wb["movimientos"])
+            except Exception:
+                excel_legacy = None
         
         clientes_importados = 0
         movimientos_importados = 0
@@ -1079,18 +1111,49 @@ async def api_importar_datos(file: UploadFile = File(...), config: str = "{}"):
                     telefono = str(row.get(col_telefono, '')).strip()
                     if telefono == 'nan':
                         telefono = ''
+
+                cedula = ''
+                if col_cedula and col_cedula in df.columns:
+                    cedula = str(row.get(col_cedula, '')).strip()
+                    if cedula == 'nan':
+                        cedula = ''
+
+                direccion = ''
+                if col_direccion and col_direccion in df.columns:
+                    direccion = str(row.get(col_direccion, '')).strip()
+                    if direccion == 'nan':
+                        direccion = ''
+
+                ciudad = ''
+                if col_ciudad and col_ciudad in df.columns:
+                    ciudad = str(row.get(col_ciudad, '')).strip()
+                    if ciudad == 'nan':
+                        ciudad = ''
+                
+                # Insertar el cliente en SQLite (fuente principal de datos)
+                try:
+                    cliente_sqlite = db.crear_cliente(
+                        nombre=nombre,
+                        telefono=telefono,
+                        cedula=cedula,
+                        direccion=direccion,
+                        ciudad=ciudad
+                    )
+                except Exception:
+                    continue
                 
                 # Crear ID de cliente
                 cliente_id = str(uuid_module.uuid4())
                 
-                # Agregar cliente
-                ws_clientes.append([
-                    cliente_id,
-                    nombre,
-                    telefono,
-                    timestamp_actual,
-                    True
-                ])
+                # Agregar cliente al Excel legacy (si existe el archivo existe)
+                if excel_legacy:
+                    excel_legacy[1].append([
+                        cliente_id,
+                        nombre,
+                        telefono,
+                        timestamp_actual,
+                        True
+                    ])
                 
                 clientes_importados += 1
                 
@@ -1128,35 +1191,56 @@ async def api_importar_datos(file: UploadFile = File(...), config: str = "{}"):
                 
                 # Crear movimiento de préstamo
                 if prestamos > 0:
-                    ws_movimientos.append([
-                        str(uuid_module.uuid4()),
-                        cliente_id,
-                        'prestamo',
-                        'Saldo inicial importado',
-                        prestamos,
-                        fecha_actual,
-                        timestamp_actual
-                    ])
+                    if excel_legacy:
+                        excel_legacy[2].append([
+                            str(uuid_module.uuid4()),
+                            cliente_id,
+                            'prestamo',
+                            'Saldo inicial importado',
+                            prestamos,
+                            fecha_actual,
+                            timestamp_actual
+                        ])
+                    try:
+                        db.crear_movimiento(
+                            cliente_id=cliente_sqlite['id'],
+                            tipo='prestamo',
+                            descripcion='Saldo inicial importado',
+                            monto=prestamos
+                        )
+                    except Exception:
+                        pass
                     movimientos_importados += 1
                 
                 # Crear movimiento de abono
                 if abonos > 0:
-                    ws_movimientos.append([
-                        str(uuid_module.uuid4()),
-                        cliente_id,
-                        'abono',
-                        'Abonos previos importados',
-                        abonos,
-                        fecha_actual,
-                        timestamp_actual
-                    ])
+                    if excel_legacy:
+                        excel_legacy[2].append([
+                            str(uuid_module.uuid4()),
+                            cliente_id,
+                            'abono',
+                            'Abonos previos importados',
+                            abonos,
+                            fecha_actual,
+                            timestamp_actual
+                        ])
+                    try:
+                        db.crear_movimiento(
+                            cliente_id=cliente_sqlite['id'],
+                            tipo='abono',
+                            descripcion='Abonos previos importados',
+                            monto=abonos
+                        )
+                    except Exception:
+                        pass
                     movimientos_importados += 1
                     
             except Exception as e:
                 continue
         
-        # Guardar archivo
-        wb.save(db.excel_path)
+        # Guardar archivo legacy (si existe)
+        if excel_legacy:
+            excel_legacy[0].save(db.excel_path)
         
         # Invalidar cache
         db._invalidate_cache()
@@ -1170,6 +1254,154 @@ async def api_importar_datos(file: UploadFile = File(...), config: str = "{}"):
             }
         }
         
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en importación: {str(e)}")
+
+# ==================== API: PRODUCTOS IMPORTAR / EXPORTAR EXCEL ====================
+
+def _parse_numero(valor):
+    try:
+        s = str(valor).replace('$', '').replace(' ', '').strip()
+        if s == '' or s.lower() == 'nan' or s.lower() == 'none':
+            return 0.0
+        return float(s.replace(',', '.'))
+    except Exception:
+        return 0.0
+
+@app.get("/api/productos/exportar")
+async def api_exportar_productos():
+    """Descarga un Excel con los productos (incluye código de barras)."""
+    try:
+        productos = db.get_productos()
+        import io
+        df = pd.DataFrame([{
+            "Nombre": p.get("nombre", ""),
+            "Categoria": p.get("categoria", ""),
+            "Referencia": p.get("referencia", "") or "",
+            "Código de barras": p.get("codigo_barras", "") or "",
+            "Precio compra": float(p.get("precio_compra", 0) or 0),
+            "Precio venta": float(p.get("precio_venta", 0) or 0),
+            "Stock": int(p.get("stock", 0) or 0),
+            "Stock minimo": int(p.get("stock_minimo", 0) or 0),
+        } for p in productos])
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False, sheet_name="productos")
+        buf.seek(0)
+        return Response(
+            content=buf.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=productos.xlsx"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al exportar: {str(e)}")
+
+@app.post("/api/productos/importar/preview")
+async def api_productos_importar_preview(file: UploadFile = File(...)):
+    """Previsualiza un archivo Excel antes de importar productos."""
+    try:
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="El archivo debe ser Excel (.xlsx o .xls)")
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
+            content = await file.read()
+            tmp.write(content)
+            tmp_path = tmp.name
+        df = pd.read_excel(tmp_path)
+        os.unlink(tmp_path)
+        columnas = list(df.columns)
+        filas = df.head(5).to_dict('records')
+        filas_ser = []
+        for fila in filas:
+            item = {}
+            for c in columnas:
+                v = fila.get(c, None)
+                if v is None:
+                    item[c] = ""
+                elif pd.isna(v):
+                    item[c] = ""
+                elif isinstance(v, (int, float)):
+                    item[c] = float(v)
+                else:
+                    item[c] = str(v)
+            filas_ser.append(item)
+        return {"success": True, "data": {"columnas": columnas, "total_filas": int(len(df)), "preview": filas_ser}}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al leer archivo: {str(e)}")
+
+@app.post("/api/productos/importar")
+async def api_productos_importar(file: UploadFile = File(...), config: str = Form("{}")):
+    """Importa productos desde un archivo Excel."""
+    import json
+    try:
+        config_dict = json.loads(config) if isinstance(config, str) else config
+        col_nombre = (config_dict.get('col_nombre') or '').strip()
+        col_categoria = (config_dict.get('col_categoria') or '').strip()
+        col_referencia = (config_dict.get('col_referencia') or '').strip()
+        col_codigo_barras = (config_dict.get('col_codigo_barras') or '').strip()
+        col_precio_compra = (config_dict.get('col_precio_compra') or '').strip()
+        col_precio_venta = (config_dict.get('col_precio_venta') or '').strip()
+        col_stock = (config_dict.get('col_stock') or '').strip()
+        crear_backup = config_dict.get('crear_backup', True)
+
+        if not col_nombre:
+            raise HTTPException(status_code=400, detail="Debes especificar la columna de nombre")
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="El archivo debe ser Excel (.xlsx o .xls)")
+
+        if crear_backup:
+            db.crear_backup()
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
+            content = await file.read()
+            tmp.write(content)
+            tmp_path = tmp.name
+        df = pd.read_excel(tmp_path)
+        os.unlink(tmp_path)
+        df = df.dropna(subset=[col_nombre], how='all')
+        df = df.fillna('')
+
+        importados = 0
+        errores = []
+        for idx, row in df.iterrows():
+            try:
+                nombre = str(row.get(col_nombre, '')).strip()
+                if not nombre or nombre.lower() == 'nan':
+                    continue
+                categoria = str(row.get(col_categoria, '')).strip() if (col_categoria and col_categoria in df.columns) else ''
+                if categoria.lower() == 'nan':
+                    categoria = ''
+                referencia = str(row.get(col_referencia, '')).strip() if (col_referencia and col_referencia in df.columns) else ''
+                if referencia.lower() == 'nan':
+                    referencia = ''
+                codigo_barras = str(row.get(col_codigo_barras, '')).strip() if (col_codigo_barras and col_codigo_barras in df.columns) else ''
+                if codigo_barras.lower() in ('nan', 'none'):
+                    codigo_barras = ''
+                precio_compra = _parse_numero(row.get(col_precio_compra, 0)) if (col_precio_compra and col_precio_compra in df.columns) else 0.0
+                precio_venta = _parse_numero(row.get(col_precio_venta, 0)) if (col_precio_venta and col_precio_venta in df.columns) else 0.0
+                stock = int(_parse_numero(row.get(col_stock, 0))) if (col_stock and col_stock in df.columns) else 0
+
+                db.crear_producto(
+                    nombre=nombre, categoria=categoria,
+                    precio_compra=precio_compra, precio_venta=precio_venta,
+                    stock=stock, stock_minimo=0, referencia=referencia or None,
+                    codigo_barras=codigo_barras or None
+                )
+                importados += 1
+            except ValueError as e:
+                errores.append(f"Fila {idx + 1}: {nombre}: {str(e)}")
+            except Exception as e:
+                errores.append(f"Fila {idx + 1}: error inesperado ({nombre}): {str(e)}")
+
+        db._invalidate_cache()
+        return {
+            "success": True,
+            "message": f"Importación completada: {importados} producto(s) importado(s)",
+            "data": {"importados": importados, "errores": errores}
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -1294,7 +1526,7 @@ async def api_get_movimientos_by_proveedor(proveedor_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/movimientos-proveedor")
+@app.post("/api/movimientos-proveedor", response_model=ApiResponseMovimientoProveedor)
 async def api_crear_movimiento_proveedor(movimiento: MovimientoProveedorCreate):
     """Crea un nuevo movimiento de proveedor"""
     try:
@@ -1313,12 +1545,23 @@ async def api_crear_movimiento_proveedor(movimiento: MovimientoProveedorCreate):
         if not proveedor:
             raise HTTPException(status_code=404, detail="Proveedor no encontrado")
         
+        # Si se envía el detalle de productos, la opción debe estar activa
+        items = None
+        if movimiento.items:
+            if not _get_config_full().get("facturas_sumar_stock", False):
+                raise HTTPException(
+                    status_code=400,
+                    detail="La opción de sumar stock en facturas está desactivada. Actívala en Configuración > Inventario."
+                )
+            items = [item.model_dump() for item in movimiento.items]
+        
         nuevo = db.crear_movimiento_proveedor(
             proveedor_id=movimiento.proveedor_id,
             tipo=movimiento.tipo,
             descripcion=movimiento.descripcion.strip(),
             monto=movimiento.monto,
-            fecha=movimiento.fecha
+            fecha=movimiento.fecha,
+            items=items
         )
         
         nuevo['proveedor_nombre'] = proveedor['nombre']
@@ -1359,7 +1602,7 @@ async def api_get_dashboard_proveedores():
 
 # ==================== API: INVENTARIO Y VENTAS ====================
 
-@app.get("/api/productos")
+@app.get("/api/productos", response_model=ApiResponseProductosList)
 async def api_get_productos():
     """Obtiene productos activos"""
     try:
@@ -1367,7 +1610,7 @@ async def api_get_productos():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/productos/buscar")
+@app.get("/api/productos/buscar", response_model=ApiResponseProductosList)
 async def api_buscar_productos(q: str = Query("")):
     """Busca productos por nombre o categoria"""
     try:
@@ -1375,11 +1618,11 @@ async def api_buscar_productos(q: str = Query("")):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/productos/{producto_id}")
-async def api_get_producto(producto_id: str):
-    """Obtiene un producto"""
+@app.get("/api/productos/buscar-por-codigo", response_model=ApiResponseProducto)
+async def api_buscar_producto_por_codigo(codigo: str = Query(..., description="Código de barras exacto a buscar")):
+    """Busca un producto por código de barras exacto. 200 si existe, 404 si no."""
     try:
-        producto = db.get_producto_by_id(producto_id)
+        producto = db.buscar_producto_por_codigo(codigo)
         if not producto:
             raise HTTPException(status_code=404, detail="Producto no encontrado")
         return {"success": True, "data": producto}
@@ -1388,7 +1631,20 @@ async def api_get_producto(producto_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/productos")
+@app.get("/api/productos/{producto_id}", response_model=ApiResponseProductoDetalle)
+async def api_get_producto(producto_id: str):
+    """Obtiene detalle completo de un producto (datos, precios, movimientos y ventas)"""
+    try:
+        producto = db.get_producto_detalle(producto_id)
+        if not producto:
+            raise HTTPException(status_code=404, detail="Producto no encontrado")
+        return {"success": True, "data": producto}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/productos", response_model=ApiResponseProducto)
 async def api_crear_producto(producto: ProductoCreate):
     """Crea un producto"""
     try:
@@ -1401,6 +1657,10 @@ async def api_crear_producto(producto: ProductoCreate):
         if (producto.stock or 0) < 0 or (producto.stock_minimo or 0) < 0:
             raise HTTPException(status_code=400, detail="El stock no puede ser negativo")
 
+        codigo_normalizado = normalizar_codigo_barras(producto.codigo_barras)
+        if codigo_normalizado and db._codigo_barras_en_uso(codigo_normalizado):
+            raise HTTPException(status_code=409, detail="Ya existe un producto con ese código de barras")
+
         nuevo = db.crear_producto(
             nombre=producto.nombre.strip(),
             categoria=(producto.categoria or "").strip(),
@@ -1409,17 +1669,25 @@ async def api_crear_producto(producto: ProductoCreate):
             stock=producto.stock or 0,
             stock_minimo=producto.stock_minimo or 0,
             referencia=(producto.referencia or "").strip() if producto.referencia else None,
+            codigo_barras=codigo_normalizado,
         )
         return {"success": True, "data": nuevo, "message": "Producto creado exitosamente"}
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.put("/api/productos/{producto_id}")
+@app.put("/api/productos/{producto_id}", response_model=ApiResponseSimple)
 async def api_actualizar_producto(producto_id: str, producto: ProductoUpdate):
     """Actualiza un producto"""
     try:
+        if producto.codigo_barras is not None:
+            codigo_normalizado = normalizar_codigo_barras(producto.codigo_barras)
+            if codigo_normalizado and db._codigo_barras_en_uso(codigo_normalizado, exclude_id=producto_id):
+                raise HTTPException(status_code=409, detail="Ya existe un producto con ese código de barras")
+
         actualizado = db.actualizar_producto(
             producto_id=producto_id,
             nombre=producto.nombre,
@@ -1429,16 +1697,19 @@ async def api_actualizar_producto(producto_id: str, producto: ProductoUpdate):
             stock=producto.stock,
             stock_minimo=producto.stock_minimo,
             referencia=producto.referencia,
+            codigo_barras=producto.codigo_barras,
         )
         if not actualizado:
             raise HTTPException(status_code=404, detail="Producto no encontrado")
         return {"success": True, "message": "Producto actualizado exitosamente"}
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/api/productos/{producto_id}")
+@app.delete("/api/productos/{producto_id}", response_model=ApiResponseSimple)
 async def api_eliminar_producto(producto_id: str):
     """Desactiva un producto"""
     try:
@@ -1451,7 +1722,7 @@ async def api_eliminar_producto(producto_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/ventas")
+@app.get("/api/ventas", response_model=ApiResponseVentasList)
 async def api_get_ventas(limite: int = Query(100, ge=1, le=500)):
     """Obtiene ventas recientes"""
     try:
@@ -1459,7 +1730,7 @@ async def api_get_ventas(limite: int = Query(100, ge=1, le=500)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/ventas")
+@app.post("/api/ventas", response_model=ApiResponseVenta)
 async def api_crear_venta(venta: VentaCreate):
     """Registra una venta y descuenta inventario"""
     try:
@@ -1484,7 +1755,7 @@ async def api_crear_venta(venta: VentaCreate):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/api/ventas/{venta_id}")
+@app.delete("/api/ventas/{venta_id}", response_model=ApiResponseSimple)
 async def api_anular_venta(venta_id: str):
     """Anula una venta y devuelve el stock"""
     try:
@@ -1500,7 +1771,7 @@ async def api_anular_venta(venta_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/productos/{producto_id}/ajustar-stock")
+@app.post("/api/productos/{producto_id}/ajustar-stock", response_model=ApiResponseSimple)
 async def api_ajustar_stock(producto_id: str, ajuste: AjusteStock):
     """Ajusta el stock de un producto rápidamente"""
     try:
@@ -1519,7 +1790,7 @@ async def api_ajustar_stock(producto_id: str, ajuste: AjusteStock):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/dashboard-inventario")
+@app.get("/api/dashboard-inventario", response_model=ApiResponseInventarioStats)
 async def api_get_dashboard_inventario():
     """Obtiene resumen de inventario"""
     try:
@@ -1542,6 +1813,9 @@ async def api_get_trial_info():
 
 class ConfigUpdate(BaseModel):
     nombre_tienda: Optional[str] = None
+    direccion: Optional[str] = None
+    nit: Optional[str] = None
+    telefono: Optional[str] = None
     mostrar_montos_dashboard: Optional[bool] = None
     mostrar_resumen_inicio: Optional[bool] = None
     whatsapp_template_abono: Optional[str] = None
@@ -1553,6 +1827,9 @@ class ConfigUpdate(BaseModel):
     qr_pago_nequi: Optional[str] = None
     qr_pago_davi: Optional[str] = None
     qr_pago_bancolombia: Optional[str] = None
+    facturas_sumar_stock: Optional[bool] = None
+    recibo_venta: Optional[bool] = None
+    codigo_barras_activo: Optional[bool] = None
     backup_activo: Optional[bool] = None
     backup_hora: Optional[str] = None
     backup_frecuencia: Optional[str] = None
@@ -1572,6 +1849,9 @@ def _get_config_full() -> Dict[str, Any]:
         
         return {
             "nombre_tienda": config.get("nombre_tienda", "EnOrden"),
+            "direccion": config.get("direccion", ""),
+            "nit": config.get("nit", ""),
+            "telefono": config.get("telefono", ""),
             "mostrar_montos_dashboard": config.get("mostrar_montos_dashboard", "false").lower() == "true",
             "mostrar_resumen_inicio": config.get("mostrar_resumen_inicio", "false").lower() == "true",
             "whatsapp_template_abono": config.get("whatsapp_template_abono", ""),
@@ -1583,6 +1863,9 @@ def _get_config_full() -> Dict[str, Any]:
             "qr_pago_nequi": config.get("qr_pago_nequi", ""),
             "qr_pago_davi": config.get("qr_pago_davi", ""),
             "qr_pago_bancolombia": config.get("qr_pago_bancolombia", ""),
+            "facturas_sumar_stock": config.get("facturas_sumar_stock", "false").lower() == "true",
+            "recibo_venta": config.get("recibo_venta", "false").lower() == "true",
+            "codigo_barras_activo": config.get("codigo_barras_activo", "false").lower() == "true",
             "backup_activo": config.get("backup_activo", "true").lower() == "true",
             "backup_hora": config.get("backup_hora", "23:00"),
             "backup_frecuencia": config.get("backup_frecuencia", "diario"),
@@ -1592,6 +1875,9 @@ def _get_config_full() -> Dict[str, Any]:
         print(f"Error obteniendo config: {e}")
         return {
             "nombre_tienda": "EnOrden",
+            "direccion": "",
+            "nit": "",
+            "telefono": "",
             "mostrar_montos_dashboard": False,
             "mostrar_resumen_inicio": False,
             "whatsapp_template_abono": "",
@@ -1603,6 +1889,9 @@ def _get_config_full() -> Dict[str, Any]:
             "qr_pago_nequi": "",
             "qr_pago_davi": "",
             "qr_pago_bancolombia": "",
+            "facturas_sumar_stock": False,
+            "recibo_venta": False,
+            "codigo_barras_activo": False,
             "backup_activo": True,
             "backup_hora": "23:00",
             "backup_frecuencia": "diario",
@@ -1713,6 +2002,12 @@ async def api_update_configuracion(config: ConfigUpdate):
         updates = {}
         if config.nombre_tienda is not None:
             updates['nombre_tienda'] = config.nombre_tienda
+        if config.direccion is not None:
+            updates['direccion'] = config.direccion
+        if config.nit is not None:
+            updates['nit'] = config.nit
+        if config.telefono is not None:
+            updates['telefono'] = config.telefono
         if config.mostrar_montos_dashboard is not None:
             updates['mostrar_montos_dashboard'] = str(config.mostrar_montos_dashboard).lower()
         if config.mostrar_resumen_inicio is not None:
@@ -1735,6 +2030,12 @@ async def api_update_configuracion(config: ConfigUpdate):
             updates['qr_pago_davi'] = config.qr_pago_davi
         if config.qr_pago_bancolombia is not None:
             updates['qr_pago_bancolombia'] = config.qr_pago_bancolombia
+        if config.facturas_sumar_stock is not None:
+            updates['facturas_sumar_stock'] = str(config.facturas_sumar_stock).lower()
+        if config.recibo_venta is not None:
+            updates['recibo_venta'] = str(config.recibo_venta).lower()
+        if config.codigo_barras_activo is not None:
+            updates['codigo_barras_activo'] = str(config.codigo_barras_activo).lower()
         if config.backup_activo is not None:
             updates['backup_activo'] = str(config.backup_activo).lower()
         if config.backup_hora is not None:

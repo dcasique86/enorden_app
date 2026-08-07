@@ -124,6 +124,9 @@ class ExcelClienteRepository(ClienteRepository):
                 id=c_id,
                 nombre=c['nombre'],
                 telefono=c.get('telefono', ''),
+                cedula=c.get('cedula', ''),
+                direccion=c.get('direccion', ''),
+                ciudad=c.get('ciudad', ''),
                 fecha_creacion=c['fecha_creacion'],
                 activo=c['activo'],
                 saldo=saldo,
@@ -163,6 +166,9 @@ class ExcelClienteRepository(ClienteRepository):
             id=str(c['id']),
             nombre=c['nombre'],
             telefono=c.get('telefono', ''),
+            cedula=c.get('cedula', ''),
+            direccion=c.get('direccion', ''),
+            ciudad=c.get('ciudad', ''),
             fecha_creacion=c['fecha_creacion'],
             activo=c['activo'],
             saldo=Decimal(str(resumen['saldo'])),
@@ -175,12 +181,18 @@ class ExcelClienteRepository(ClienteRepository):
     def create(self, obj: ClienteCreate) -> ClienteRead:
         nuevo = self.db.crear_cliente(
             nombre=obj.nombre.strip(),
-            telefono=obj.telefono.strip() if obj.telefono else ""
+            telefono=obj.telefono.strip() if obj.telefono else "",
+            cedula=obj.cedula.strip() if obj.cedula else "",
+            direccion=obj.direccion.strip() if obj.direccion else "",
+            ciudad=obj.ciudad.strip() if obj.ciudad else ""
         )
         return ClienteRead(
             id=str(nuevo['id']),
             nombre=nuevo['nombre'],
             telefono=nuevo['telefono'],
+            cedula=nuevo['cedula'],
+            direccion=nuevo['direccion'],
+            ciudad=nuevo['ciudad'],
             fecha_creacion=nuevo['fecha_creacion'],
             activo=nuevo['activo'],
             saldo=Decimal("0.00"),
@@ -232,6 +244,9 @@ class ExcelClienteRepository(ClienteRepository):
                 id=c_id,
                 nombre=c['nombre'],
                 telefono=c.get('telefono', ''),
+                cedula=c.get('cedula', ''),
+                direccion=c.get('direccion', ''),
+                ciudad=c.get('ciudad', ''),
                 fecha_creacion=c['fecha_creacion'],
                 activo=c['activo'],
                 saldo=saldo,
@@ -252,7 +267,10 @@ class ExcelClienteRepository(ClienteRepository):
         return self.db.actualizar_cliente(
             cliente_id=id,
             nombre=obj.nombre,
-            telefono=obj.telefono
+            telefono=obj.telefono,
+            cedula=obj.cedula,
+            direccion=obj.direccion,
+            ciudad=obj.ciudad
         )
 
     def delete(self, id: str) -> bool:

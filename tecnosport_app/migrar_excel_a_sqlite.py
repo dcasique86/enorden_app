@@ -23,10 +23,14 @@ def crear_tablas(conn):
         id TEXT PRIMARY KEY,
         nombre TEXT NOT NULL,
         telefono TEXT,
+        cedula TEXT,
+        direccion TEXT,
+        ciudad TEXT,
         fecha_creacion TEXT,
         activo INTEGER DEFAULT 1
     );
     """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_clientes_cedula ON clientes(cedula)")
     
     # 2. Tabla movimientos
     cursor.execute("""

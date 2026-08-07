@@ -81,6 +81,14 @@ Si el navegador no se abre automáticamente:
 
 ---
 
+## 📚 Documentación
+
+- **`docs/DATABASE_SCHEMA.md`** — esquema SQLite, las 5 migraciones y el comportamiento de `codigo_barras`.
+- **`CHANGELOG.md`** (raíz del repo) — notas de versión y política de congelamiento de módulos.
+- **Módulo congelado**: inventario y códigos de barras (desde `v1.0.0` solo recibe correcciones de errores).
+
+---
+
 ## 🧪 Pruebas Rápidas
 
 ### Verificar que el servidor está corriendo:

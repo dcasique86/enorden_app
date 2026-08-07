@@ -12,6 +12,35 @@ const CONFIG = {
     CURRENCY_CODE: 'COP'
 };
 
+// ==================== APP CONFIG (cacheado) ====================
+const AppConfig = {
+    _cfg: null,
+    _promise: null,
+
+    async get() {
+        if (this._cfg === null) {
+            if (this._promise === null) {
+                this._promise = fetch('/api/configuracion')
+                    .then(r => r.json())
+                    .then(r => { this._cfg = (r && r.data) || {}; this._promise = null; return this._cfg; })
+                    .catch(e => { console.error('AppConfig error:', e); this._cfg = {}; this._promise = null; return this._cfg; });
+            }
+            return this._promise;
+        }
+        return this._cfg;
+    },
+
+    async flag(key, fallback = false) {
+        const cfg = await this.get();
+        return cfg[key] === undefined ? fallback : Boolean(cfg[key]);
+    },
+
+    invalidate() {
+        this._cfg = null;
+        this._promise = null;
+    }
+};
+
 // ==================== THEME MANAGER ====================
 const Theme = {
     init() {
@@ -54,6 +83,54 @@ const Theme = {
 
 // Inicializar tema al cargar el script
 Theme.init();
+
+// ==================== SIDEBAR MANAGER ====================
+const Sidebar = {
+    // Único lugar donde vive el breakpoint móvil (JS y CSS deben coincidir).
+    SIDEBAR_BREAKPOINT: 960,
+
+    init() {
+        this.btn = document.getElementById('sidebar-toggle');
+        this.mq = window.matchMedia(`(max-width: ${this.SIDEBAR_BREAKPOINT}px)`);
+
+        if (this.btn) {
+            this.btn.addEventListener('click', () => {
+                const collapsed = !this.isCollapsed();
+                this.applyCollapsedState(collapsed, { persist: true });
+            });
+        }
+
+        // Sincroniza el estado con el breakpoint. En móvil fuerza el colapso
+        // sin pisar la preferencia guardada para escritorio.
+        const sync = () => this.applyCollapsedState(this.mq.matches, { persist: false });
+        if (this.mq.addEventListener) {
+            this.mq.addEventListener('change', sync);
+        } else if (this.mq.addListener) {
+            this.mq.addListener(sync);
+        }
+
+        // Estado inicial (en caso de que el script temprano del <head> no haya corrido).
+        this.applyCollapsedState(this.mq.matches || this.isCollapsed(), { persist: false });
+    },
+
+    isCollapsed() {
+        return document.documentElement.classList.contains('sidebar-collapsed');
+    },
+
+    applyCollapsedState(collapsed, { persist } = {}) {
+        document.documentElement.classList.toggle('sidebar-collapsed', !!collapsed);
+        if (this.btn) {
+            this.btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            this.btn.title = collapsed ? 'Expandir menú' : 'Colapsar menú';
+        }
+        if (persist) {
+            localStorage.setItem('sidebar_collapsed', collapsed ? '1' : '0');
+        }
+    }
+};
+
+// Inicializar sidebar al cargar el script
+Sidebar.init();
 
 // ==================== UTILIDADES ====================
 
@@ -328,6 +405,7 @@ const API = {
     // Movimientos Proveedores
     getMovimientosProveedor: (limite = 100) => API.request(`/movimientos-proveedor?limite=${limite}`),
     getMovimientosProveedorHoy: () => API.request('/movimientos-proveedor/hoy'),
+    getConfiguracion: () => API.request('/configuracion'),
     getMovimientosByProveedor: (id) => API.request(`/movimientos-proveedor/proveedor/${id}`),
     crearMovimientoProveedor: (data) => API.request('/movimientos-proveedor', { method: 'POST', body: data }),
     
@@ -338,6 +416,7 @@ const API = {
     // Inventario y ventas
     getProductos: () => API.request('/productos'),
     buscarProductos: (q) => API.request(`/productos/buscar?q=${encodeURIComponent(q)}`),
+    buscarProductoPorCodigo: (codigo) => API.request(`/productos/buscar-por-codigo?codigo=${encodeURIComponent(codigo)}`),
     getProducto: (id) => API.request(`/productos/${id}`),
     crearProducto: (data) => API.request('/productos', { method: 'POST', body: data }),
     actualizarProducto: (id, data) => API.request(`/productos/${id}`, { method: 'PUT', body: data }),
@@ -1038,7 +1117,7 @@ const Clientes = {
                                 <div class="cliente-avatar">${getInitials(cliente.nombre)}</div>
                                 <div style="min-width: 0;">
                                     <div class="cliente-nombre">${escapeHtml(cliente.nombre)}</div>
-                                    <div class="cliente-deuda">${formatTelefono(cliente.telefono)}</div>
+                                    <div class="cliente-deuda">${[formatTelefono(cliente.telefono), cliente.cedula ? `🪪 ${escapeHtml(cliente.cedula)}` : ''].filter(Boolean).join(' • ')}</div>
                                 </div>
                             </a>
                             <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -1100,7 +1179,7 @@ const Clientes = {
                                     <div class="cliente-avatar">${getInitials(cliente.nombre)}</div>
                                     <div>
                                         <div class="cliente-nombre">${escapeHtml(cliente.nombre)}</div>
-                                        <div class="cliente-deuda">${formatTelefono(cliente.telefono)}</div>
+                                        <div class="cliente-deuda">${[formatTelefono(cliente.telefono), cliente.cedula ? `🪪 ${escapeHtml(cliente.cedula)}` : ''].filter(Boolean).join(' • ')}</div>
                                     </div>
                                 </a>
                                 <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -1166,7 +1245,9 @@ const ClienteDetalle = {
                             <div class="avatar-lg" style="width:48px;height:48px;font-size:1.1rem;margin:0;flex-shrink:0;">${getInitials(cliente.nombre)}</div>
                             <div style="flex:1;min-width:0;">
                                 <h1 style="margin:0;font-size:1.1rem;">${escapeHtml(cliente.nombre)}</h1>
-                                <p style="margin:0.1rem 0 0;font-size:0.8rem;color:var(--text-muted);">${formatTelefono(cliente.telefono)}</p>
+                                <p style="margin:0.1rem 0 0;font-size:0.8rem;color:var(--text-muted);">
+                                    ${[formatTelefono(cliente.telefono), cliente.cedula ? `🪪 ${escapeHtml(cliente.cedula)}` : '', cliente.ciudad ? `📍 ${escapeHtml(cliente.ciudad)}` : '', cliente.direccion ? `🏠 ${escapeHtml(cliente.direccion)}` : ''].filter(Boolean).join(' • ')}
+                                </p>
                             </div>
                             ${tieneTelefono ? `<a href="https://wa.me/${WhatsApp.formatPhone(cliente.telefono)}" target="_blank" class="btn btn-sm" style="background:#25D366;color:white;padding:0.4rem 0.6rem;font-size:0.75rem;">📱 WhatsApp</a>` : ''}
                         </div>
@@ -1405,7 +1486,7 @@ const NuevoAbono = {
                                 <div class="cliente-avatar">${getInitials(cliente.nombre)}</div>
                                 <div>
                                     <div class="cliente-nombre">${escapeHtml(cliente.nombre)}</div>
-                                    <div class="cliente-deuda">${formatTelefono(cliente.telefono)}</div>
+                                    <div class="cliente-deuda">${[formatTelefono(cliente.telefono), cliente.cedula ? `🪪 ${escapeHtml(cliente.cedula)}` : ''].filter(Boolean).join(' • ')}</div>
                                 </div>
                             </div>
                             <div class="cliente-saldo">${formatCurrency(cliente.saldo || 0)}</div>
@@ -1513,6 +1594,9 @@ const NuevoAbono = {
 async function crearNuevoCliente(form) {
     const nombre = form.nombre.value.trim();
     const telefono = form.telefono.value.trim();
+    const cedula = form.cedula.value.trim();
+    const direccion = form.direccion.value.trim();
+    const ciudad = form.ciudad.value.trim();
     
     if (!nombre) {
         Toast.error('El nombre es requerido');
@@ -1520,7 +1604,7 @@ async function crearNuevoCliente(form) {
     }
     
     try {
-        await Clientes.crearCliente({ nombre, telefono });
+        await Clientes.crearCliente({ nombre, telefono, cedula, direccion, ciudad });
         form.reset();
     } catch (error) {
         // Error ya manejado en Clientes.crearCliente
@@ -1537,6 +1621,9 @@ async function abrirEditarCliente(clienteId) {
         document.getElementById('editar-cliente-id').value = data.id;
         document.getElementById('editar-cliente-nombre').value = data.nombre || '';
         document.getElementById('editar-cliente-telefono').value = data.telefono || '';
+        document.getElementById('editar-cliente-cedula').value = data.cedula || '';
+        document.getElementById('editar-cliente-direccion').value = data.direccion || '';
+        document.getElementById('editar-cliente-ciudad').value = data.ciudad || '';
         Modal.open('modal-editar-cliente');
     } catch (error) {
         Toast.error('Error al cargar el cliente');
@@ -1547,6 +1634,9 @@ async function guardarClienteEdicion(form) {
     const id = form.editar_cliente_id.value;
     const nombre = form.editar_cliente_nombre.value.trim();
     const telefono = form.editar_cliente_telefono.value.trim();
+    const cedula = form.editar_cliente_cedula.value.trim();
+    const direccion = form.editar_cliente_direccion.value.trim();
+    const ciudad = form.editar_cliente_ciudad.value.trim();
 
     if (!nombre) {
         Toast.error('El nombre es requerido');
@@ -1557,7 +1647,7 @@ async function guardarClienteEdicion(form) {
     btn.disabled = true;
     btn.textContent = 'Guardando...';
     try {
-        await API.actualizarCliente(id, { nombre, telefono });
+        await API.actualizarCliente(id, { nombre, telefono, cedula, direccion, ciudad });
         Toast.success('Cliente actualizado');
         Modal.close('modal-editar-cliente');
         Clientes.loadClientes();
@@ -1643,6 +1733,12 @@ async function confirmarEliminar() {
             Toast.success('Cliente eliminado');
             Modal.close('modal-confirmar-eliminar');
             Clientes.loadClientes();
+        } else if (_pendingDelete.tipo === 'producto') {
+            await API.eliminarProducto(_pendingDelete.id);
+            Toast.success('Producto eliminado');
+            Modal.close('modal-confirmar-eliminar');
+            Inventario.loadStats();
+            Inventario.loadProductos(document.getElementById('search-productos')?.value || '');
         } else {
             await API.eliminarProveedor(_pendingDelete.id);
             Toast.success('Proveedor eliminado');
@@ -1662,10 +1758,22 @@ async function confirmarEliminar() {
 
 // ==================== PAGINA: INVENTARIO ====================
 
+const CATEGORIA_TODAS = '__ALL__';
+
+const SORTABLE_COLUMNS = {
+    nombre: (p) => String(p.nombre || '').toLowerCase(),
+    categoria: (p) => String(p.categoria || '').toLowerCase(),
+    stock: (p) => Number(p.stock || 0),
+    precio_compra: (p) => Number(p.precio_compra || 0),
+    precio_venta: (p) => Number(p.precio_venta || 0)
+};
+
 const Inventario = {
     productosCache: [],
+    categorias: [],
     filtroActual: 'todos',
-    categoriaActual: null,
+    categoriaActual: CATEGORIA_TODAS,
+    sort: { col: 'nombre', dir: 'asc' },
 
     async init() {
         this.setupForm();
@@ -1673,6 +1781,18 @@ const Inventario = {
         await this.loadStats();
         await this.loadProductos();
         await this.loadVentas();
+        await this.aplicarConfiguracionCodigoBarras();
+
+        const params = new URLSearchParams(window.location.search);
+        const filtro = params.get('filtro');
+        if (filtro === 'stock_bajo' || filtro === 'sin_stock') {
+            this.setFiltro(filtro === 'stock_bajo' ? 'bajo_stock' : 'sin_stock');
+        }
+    },
+
+    async aplicarConfiguracionCodigoBarras() {
+        const activo = await AppConfig.flag('codigo_barras_activo', false);
+        document.querySelectorAll('.campo-codigo-barras').forEach(el => el.classList.toggle('hidden', !activo));
     },
 
     async loadStats() {
@@ -1680,11 +1800,12 @@ const Inventario = {
         if (!container) return;
         try {
             const { data } = await API.getDashboardInventario();
+            const stockBajoCount = (data.stock_bajo_count != null) ? data.stock_bajo_count : (data.stock_bajo || []).length;
             container.innerHTML = `
                 <div class="stat-card"><div class="stat-label">Productos activos</div><div class="stat-value">${data.productos_activos || 0}</div></div>
                 <div class="stat-card"><div class="stat-label">Valor inventario</div><div class="stat-value">${formatCurrency(data.valor_inventario || 0)}</div></div>
                 <div class="stat-card"><div class="stat-label">Ventas hoy</div><div class="stat-value">${formatCurrency(data.ventas_hoy || 0)}</div></div>
-                <div class="stat-card"><div class="stat-label">Stock bajo</div><div class="stat-value">${(data.stock_bajo || []).length}</div></div>
+                <div class="stat-card"><div class="stat-label">Stock bajo</div><div class="stat-value">${stockBajoCount}</div></div>
             `;
         } catch (error) {
             container.innerHTML = '';
@@ -1717,6 +1838,7 @@ const Inventario = {
         }
         
         const categorias = [...new Set(this.productosCache.map(p => (p.categoria || 'Sin categoria').trim()))].filter(Boolean).sort();
+        this.categorias = categorias;
         
         if (categorias.length === 0) {
             container.innerHTML = '<span class="text-muted" style="font-size: 0.85rem;">No hay categorías definidas</span>';
@@ -1724,14 +1846,16 @@ const Inventario = {
         }
 
         container.innerHTML = `
-            <button class="btn btn-sm ${this.categoriaActual === null ? 'btn-primary' : 'btn-secondary'}" 
-                    onclick="Inventario.setCategoria(null)" 
+            <button class="btn btn-sm ${this.categoriaActual === CATEGORIA_TODAS ? 'btn-primary' : 'btn-secondary'}"
+                    data-cat-index="-1"
+                    onclick="Inventario.setCategoriaFromChip(this)"
                     style="border-radius: 20px; white-space: nowrap;">
                 🌟 Todas
             </button>
-            ${categorias.map(cat => `
-                <button class="btn btn-sm ${this.categoriaActual === cat ? 'btn-primary' : 'btn-secondary'}" 
-                        onclick="Inventario.setCategoria('${escapeHtml(cat)}')" 
+            ${categorias.map((cat, i) => `
+                <button class="btn btn-sm ${this.categoriaActual === cat ? 'btn-primary' : 'btn-secondary'}"
+                        data-cat-index="${i}"
+                        onclick="Inventario.setCategoriaFromChip(this)"
                         style="border-radius: 20px; white-space: nowrap;">
                     ${escapeHtml(cat)}
                 </button>
@@ -1739,8 +1863,9 @@ const Inventario = {
         `;
     },
 
-    setCategoria(cat) {
-        this.categoriaActual = cat;
+    setCategoriaFromChip(btn) {
+        const idx = parseInt(btn.dataset.catIndex, 10);
+        this.categoriaActual = idx === -1 ? CATEGORIA_TODAS : (this.categorias[idx] || CATEGORIA_TODAS);
         this.renderCategorias();
         this.renderProductos();
     },
@@ -1752,20 +1877,9 @@ const Inventario = {
         const inputBusqueda = document.getElementById('search-productos');
         const isBuscando = inputBusqueda && inputBusqueda.value.trim() !== '';
 
-        if (this.categoriaActual === null && !isBuscando) {
-            container.innerHTML = `
-                <div class="empty-state" style="padding: 3rem 1rem;">
-                    <div style="font-size: 3rem; margin-bottom: 1rem;">📂</div>
-                    <div class="empty-state-title">Selecciona una categoría</div>
-                    <div class="empty-state-text">Elige una categoría arriba para ver los productos o usa el buscador.</div>
-                </div>
-            `;
-            return;
-        }
-
         let data = this.productosCache;
         
-        if (this.categoriaActual !== null && !isBuscando) {
+        if (this.categoriaActual !== CATEGORIA_TODAS && !isBuscando) {
             data = data.filter(p => (p.categoria || 'Sin categoria').trim() === this.categoriaActual);
         }
 
@@ -1774,43 +1888,98 @@ const Inventario = {
         } else if (this.filtroActual === 'sin_stock') {
             data = data.filter(p => Number(p.stock || 0) === 0);
         }
-        
+
         if (data.length === 0) {
             container.innerHTML = `<div class="empty-state"><div class="empty-state-title">No hay productos</div><div class="empty-state-text">Sin resultados para la vista actual</div></div>`;
             return;
         }
-        
+
+        const sortFn = SORTABLE_COLUMNS[this.sort.col];
+        if (sortFn) {
+            const dir = this.sort.dir === 'asc' ? 1 : -1;
+            data = [...data].sort((a, b) => {
+                const va = sortFn(a);
+                const vb = sortFn(b);
+                if (va < vb) return -1 * dir;
+                if (va > vb) return 1 * dir;
+                return 0;
+            });
+        }
+
+        const arrow = (col) => {
+            if (this.sort.col !== col) return '<span class="text-muted" style="font-size:0.7rem;">⇅</span>';
+            return this.sort.dir === 'asc' ? '<span style="color:var(--primary-light); font-size:0.7rem;">▲</span>' : '<span style="color:var(--primary-light); font-size:0.7rem;">▼</span>';
+        };
+
+        const stockBadge = (stock, minimo) => {
+            if (stock <= 0) return '<span class="badge" style="background:rgba(239,68,68,0.15); color:#ef4444;">Sin stock</span>';
+            if (stock <= minimo) return '<span class="badge" style="background:rgba(245,158,11,0.15); color:#f59e0b;">Bajo</span>';
+            return '<span class="badge" style="background:rgba(16,185,129,0.15); color:#10b981;">OK</span>';
+        };
+
         container.innerHTML = `
-            <div class="clientes-list stagger-in">
-                ${data.map(producto => {
-                    const stock = Number(producto.stock || 0);
-                    const minimo = Number(producto.stock_minimo || 0);
-                    const refBadge = producto.referencia ? `<span class="badge" style="background:#475569; margin-left:0.5rem; font-weight:normal;">Ref: ${escapeHtml(producto.referencia)}</span>` : '';
-                    return `
-                        <div class="cliente-item">
-                            <div class="cliente-info" style="flex:1; min-width:0; cursor:pointer;" onclick="Inventario.abrirEditarProducto('${producto.id}')" title="Editar Producto">
-                                <div class="cliente-avatar">PR</div>
-                                <div style="min-width:0;">
-                                    <div class="cliente-nombre" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(producto.nombre)}${refBadge}</div>
-                                    <div class="cliente-deuda">${escapeHtml(producto.categoria || 'Sin categoria')} | Stock: ${stock}</div>
-                                </div>
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 0.75rem;">
-                                ${stock <= minimo ? '<span class="badge badge-prestamo">Stock bajo</span>' : ''}
-                                <div class="cliente-saldo">${formatCurrency(producto.precio_venta || 0)}</div>
-                                <button class="btn btn-secondary btn-sm" onclick="Inventario.abrirEditarProducto('${producto.id}')" title="Editar Producto" style="padding: 0.25rem 0.5rem; border-radius: 4px;">✏️</button>
-                                <button class="btn btn-secondary btn-sm" onclick="Inventario.abrirAjusteStock('${producto.id}')" title="Ajustar Stock" style="padding: 0.25rem 0.5rem; font-weight: bold; border-radius: 4px;">+/-</button>
-                                <a href="/nueva-venta?producto=${producto.id}" class="btn btn-success btn-sm">Vender</a>
-                            </div>
-                        </div>
-                    `;
-                }).join('')}
+            <div style="overflow-x:auto;">
+                <table class="historial-table" style="min-width: 860px;">
+                    <thead>
+                        <tr>
+                            <th data-sort="nombre" onclick="Inventario.toggleSort('nombre')" style="cursor:pointer; white-space:nowrap;">Producto ${arrow('nombre')}</th>
+                            <th data-sort="categoria" onclick="Inventario.toggleSort('categoria')" style="cursor:pointer; white-space:nowrap;">Categoría ${arrow('categoria')}</th>
+                            <th data-sort="stock" onclick="Inventario.toggleSort('stock')" style="cursor:pointer; white-space:nowrap;">Stock ${arrow('stock')}</th>
+                            <th style="white-space:nowrap;">Mín</th>
+                            <th data-sort="precio_compra" onclick="Inventario.toggleSort('precio_compra')" style="cursor:pointer; white-space:nowrap;">Precio compra ${arrow('precio_compra')}</th>
+                            <th data-sort="precio_venta" onclick="Inventario.toggleSort('precio_venta')" style="cursor:pointer; white-space:nowrap;">Precio venta ${arrow('precio_venta')}</th>
+                            <th style="text-align:right;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.map(producto => {
+                            const stock = Number(producto.stock || 0);
+                            const minimo = Number(producto.stock_minimo || 0);
+const refBadge = producto.referencia ? `<span class="badge" style="background:#475569; margin-left:0.5rem; font-weight:normal; text-transform:none;">Ref: ${escapeHtml(producto.referencia)}</span>` : '';
+                            const codigoBadge = producto.codigo_barras ? `<div style="font-size:0.72rem; color:var(--text-muted); margin-top:0.15rem; display:flex; align-items:center; gap:0.3rem;"><span style="letter-spacing:0.12em;">▮▮▮▮▮</span> ${escapeHtml(producto.codigo_barras)}</div>` : '';
+                            return `
+                                <tr ondblclick="Inventario.openEditFromRow(event, '${producto.id}')">
+                                    <td style="white-space:nowrap;">
+                                        <strong style="color:var(--text-primary);">${escapeHtml(producto.nombre)}</strong>${refBadge}${codigoBadge}
+                                    </td>
+                                    <td style="white-space:nowrap;">${escapeHtml(producto.categoria || 'Sin categoria')}</td>
+                                    <td style="white-space:nowrap;">${stock} ${stockBadge(stock, minimo)}</td>
+                                    <td style="white-space:nowrap;">${minimo}</td>
+                                    <td style="white-space:nowrap;">${formatCurrency(producto.precio_compra || 0)}</td>
+                                    <td style="white-space:nowrap;">${formatCurrency(producto.precio_venta || 0)}</td>
+                                    <td style="white-space:nowrap; text-align:right;">
+                                        <button class="btn btn-secondary btn-sm" onclick="Inventario.abrirDetalleProducto('${producto.id}')" title="Ver detalle" aria-label="Ver detalle" style="padding:0.25rem 0.5rem; border-radius:4px;">👁️</button>
+                                        <button class="btn btn-secondary btn-sm" onclick="Inventario.abrirEditarProducto('${producto.id}')" title="Editar" aria-label="Editar" style="padding:0.25rem 0.5rem; border-radius:4px;">✏️</button>
+                                        <button class="btn btn-secondary btn-sm" onclick="Inventario.abrirAjusteStock('${producto.id}')" title="Ajustar stock" aria-label="Ajustar stock" style="padding:0.25rem 0.5rem; border-radius:4px;">+/-</button>
+                                        <button class="btn btn-secondary btn-sm" onclick="Inventario.abrirEliminarProducto('${producto.id}')" title="Eliminar producto" aria-label="Eliminar producto" style="padding:0.25rem 0.5rem; border-radius:4px;">🗑️</button>
+                                        <a href="/nueva-venta?producto=${producto.id}" class="btn btn-success btn-sm" style="margin-left:0.25rem;">Vender</a>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
             </div>
         `;
     },
 
+    toggleSort(col) {
+        if (!SORTABLE_COLUMNS[col]) return;
+        if (this.sort.col === col) {
+            this.sort.dir = this.sort.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+            this.sort = { col, dir: 'asc' };
+        }
+        this.renderProductos();
+    },
+
+    resetSort() {
+        this.sort = { col: 'nombre', dir: 'asc' };
+    },
+
     setFiltro(filtro) {
         this.filtroActual = filtro;
+        this.resetSort();
         document.getElementById('filter-todos')?.classList.replace('btn-primary', 'btn-secondary');
         document.getElementById('filter-bajo')?.classList.replace('btn-primary', 'btn-secondary');
         document.getElementById('filter-sin')?.classList.replace('btn-primary', 'btn-secondary');
@@ -1875,6 +2044,113 @@ const Inventario = {
         Modal.open('modal-ajustar-stock');
     },
 
+    abrirEliminarProducto(productoId) {
+        const producto = this.productosCache.find(p => p.id === productoId);
+        const nombre = producto ? producto.nombre : 'este producto';
+        _pendingDelete = { tipo: 'producto', id: productoId };
+        document.getElementById('eliminar-titulo').textContent = 'Eliminar producto';
+        document.getElementById('eliminar-mensaje').innerHTML = `¿Seguro que deseas eliminar <strong>${escapeHtml(nombre)}</strong>? Se ocultará del inventario (su historial de ventas se conserva).`;
+        Modal.open('modal-confirmar-eliminar');
+    },
+
+    openEditFromRow(ev, productoId) {
+        if (ev.target.closest('button, a')) return;
+        this.abrirEditarProducto(productoId);
+    },
+
+    async abrirDetalleProducto(productoId) {
+        const body = document.getElementById('detalle-producto-body');
+        const titulo = document.getElementById('detalle-producto-titulo');
+        if (!body) return;
+        Modal.open('modal-detalle-producto');
+        body.innerHTML = `<div class="loading"><div class="spinner"></div><p style="margin-top: 1rem;">Cargando detalle...</p></div>`;
+        try {
+            const { data } = await API.request(`/productos/${productoId}`);
+            if (titulo) titulo.textContent = (data.nombre || 'Producto') + ' — Detalle';
+
+            const champ = (label, valor) => `<div style="display:flex; justify-content:space-between; padding:0.3rem 0; border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">${label}</span><span style="font-weight:600;">${valor}</span></div>`;
+
+            const info = `
+                <div style="margin-bottom:1rem;">
+                    ${champ('Categoría', escapeHtml(data.categoria || 'Sin categoría'))}
+                    ${champ('Referencia', escapeHtml(data.referencia || '-'))}
+                    ${champ('Código de barras', escapeHtml(data.codigo_barras || '-'))}
+                    ${champ('Precio compra', formatCurrency(data.precio_compra || 0))}
+                    ${champ('Precio venta', formatCurrency(data.precio_venta || 0))}
+                    ${champ('Stock actual', data.stock ?? 0)}
+                    ${champ('Stock mínimo', data.stock_minimo ?? 0)}
+                    ${champ('Unidades vendidas (historial)', data.unidades_vendidas ?? 0)}
+                    ${champ('Total vendido', formatCurrency(data.total_vendido || 0))}
+                    ${champ('Ganancia estimada', formatCurrency(data.ganancia_estimada || 0))}
+                </div>`;
+
+            let movimientos = '<div class="empty-state-text" style="padding:1rem;">Sin movimientos de stock</div>';
+            if (data.movimientos && data.movimientos.length) {
+                const tipoBadge = (t) => t === 'venta' ? '<span class="badge" style="background:#ef4444;">Salida</span>' : t === 'compra' ? '<span class="badge" style="background:#22c55e;">Entrada</span>' : t === 'anulacion' ? '<span class="badge" style="background:#f59e0b;">Anulación</span>' : '<span class="badge" style="background:#3b82f6;">Ajuste</span>';
+                movimientos = `
+                    <div style="overflow-x:auto;">
+                        <table class="historial-table">
+                            <thead><tr><th>Fecha</th><th>Tipo</th><th>Cantidad</th><th>Stock resultante</th><th>Nota</th></tr></thead>
+                            <tbody>
+                                ${data.movimientos.map(m => `
+                                    <tr>
+                                        <td>${formatDate(m.fecha)}</td>
+                                        <td>${tipoBadge(m.tipo)}</td>
+                                        <td>${m.cantidad > 0 ? '+' + m.cantidad : m.cantidad}</td>
+                                        <td>${m.stock_resultante ?? '-'}</td>
+                                        <td>${escapeHtml(m.nota || '-')}</td>
+                                    </tr>`).join('')}
+                            </tbody>
+                        </table>
+                    </div>`;
+            }
+
+            let ventas = '<div class="empty-state-text" style="padding:1rem;">Sin ventas registradas</div>';
+            if (data.ultimas_ventas && data.ultimas_ventas.length) {
+                ventas = `
+                    <div style="overflow-x:auto;">
+                        <table class="historial-table">
+                            <thead><tr><th>Fecha</th><th>Cantidad</th><th>Precio unit.</th><th>Total</th></tr></thead>
+                            <tbody>
+                                ${data.ultimas_ventas.map(v => `
+                                    <tr><td>${formatDate(v.fecha)}</td><td>${v.cantidad}</td><td>${formatCurrency(v.precio_unitario || 0)}</td><td>${formatCurrency(v.total || 0)}</td></tr>`).join('')}
+                            </tbody>
+                        </table>
+                    </div>`;
+            }
+
+            let precios = '';
+            if (data.historial_precios && data.historial_precios.length) {
+                precios = `
+                    <div style="overflow-x:auto; margin-top:1rem;">
+                        <table class="historial-table">
+                            <thead><tr><th>Fecha</th><th>Compra ant.</th><th>Compra nueva</th><th>Venta ant.</th><th>Venta nueva</th></tr></thead>
+                            <tbody>
+                                ${data.historial_precios.map(h => `
+                                    <tr><td>${formatDate(h.fecha)}</td><td>${formatCurrency(h.precio_compra_anterior || 0)}</td><td>${formatCurrency(h.precio_compra_nuevo || 0)}</td><td>${formatCurrency(h.precio_venta_anterior || 0)}</td><td>${formatCurrency(h.precio_venta_nuevo || 0)}</td></tr>`).join('')}
+                            </tbody>
+                        </table>
+                    </div>`;
+            }
+
+            body.innerHTML = `
+                <div style="display:flex; flex-direction:column; gap:1rem;">
+                    <div>${info}</div>
+                    <div>
+                        <h4 style="margin:0 0 0.5rem; font-size:0.9rem;">Movimientos de stock</h4>
+                        ${movimientos}
+                    </div>
+                    <div>
+                        <h4 style="margin:0 0 0.5rem; font-size:0.9rem;">Últimas ventas</h4>
+                        ${ventas}
+                    </div>
+                    ${precios ? `<div><h4 style="margin:0 0 0.5rem; font-size:0.9rem;">Historial de precios</h4>${precios}</div>` : ''}
+                </div>`;
+        } catch (error) {
+            body.innerHTML = `<p class="text-danger text-center">Error al cargar detalle: ${escapeHtml(error.message || 'desconocido')}</p>`;
+        }
+    },
+
     abrirEditarProducto(productoId) {
         const producto = this.productosCache.find(p => p.id === productoId);
         if (!producto) return;
@@ -1883,6 +2159,8 @@ const Inventario = {
         document.getElementById('editar-producto-nombre').value = producto.nombre || '';
         document.getElementById('editar-producto-categoria').value = producto.categoria || '';
         document.getElementById('editar-producto-referencia').value = producto.referencia || '';
+        const editarCodigo = document.getElementById('editar-producto-codigo-barras');
+        if (editarCodigo) editarCodigo.value = producto.codigo_barras || '';
         document.getElementById('editar-producto-compra').value = producto.precio_compra || 0;
         document.getElementById('editar-producto-venta').value = producto.precio_venta || 0;
         document.getElementById('editar-producto-minimo').value = producto.stock_minimo || 0;
@@ -1898,7 +2176,10 @@ const Inventario = {
     setupSearch() {
         const input = document.getElementById('search-productos');
         if (!input) return;
-        const search = debounce((query) => this.loadProductos(query), CONFIG.DEBOUNCE_DELAY);
+        const search = debounce((query) => {
+            this.resetSort();
+            this.loadProductos(query);
+        }, CONFIG.DEBOUNCE_DELAY);
         input.addEventListener('input', (e) => search(e.target.value));
     },
 
@@ -2167,7 +2448,37 @@ const NuevaVenta = {
         this.setupSearch();
         this.setupForm();
         this.setupTotal();
+        await this.setupEscaner();
         if (productoId) await this.selectProducto(productoId);
+    },
+
+    async setupEscaner() {
+        const grupo = document.getElementById('grupo-escaneo-codigo');
+        const input = document.getElementById('escanear-codigo');
+        if (!grupo) return;
+        if (input && !grupo.classList.contains('escaneo-inicializado')) {
+            grupo.classList.add('escaneo-inicializado');
+            input.addEventListener('keydown', async (e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                const codigo = input.value.trim();
+                if (!codigo) return;
+                try {
+                    const { success, data } = await API.buscarProductoPorCodigo(codigo);
+                    input.value = '';
+                    if (success && data) {
+                        await this.selectProducto(data.id);
+                    } else {
+                        Toast.error('Producto no encontrado');
+                    }
+                } catch (error) {
+                    input.value = '';
+                    Toast.error(error.message || 'Producto no encontrado');
+                }
+            });
+        }
+        const activo = await AppConfig.flag('codigo_barras_activo', false);
+        grupo.classList.toggle('hidden', !activo);
     },
 
     setupSearch() {
@@ -2244,19 +2555,22 @@ const NuevaVenta = {
             document.getElementById('buscar-producto').style.display = 'none';
             document.getElementById('resultados-busqueda').classList.remove('active');
             document.getElementById('precio-unitario').value = data.precio_venta || 0;
+            const codigo = data.codigo_barras ? `<div class="cliente-deuda" style="font-size:0.8rem;">Código de barras: ${escapeHtml(data.codigo_barras)}</div>` : '';
             const selected = document.getElementById('producto-seleccionado');
             selected.innerHTML = `
                 <div class="cliente-item" style="cursor: default; border-color: var(--primary);">
                     <div class="cliente-info">
                         <div class="cliente-avatar">PR</div>
-                        <div><div class="cliente-nombre">${escapeHtml(data.nombre)}</div><div class="cliente-deuda">Stock disponible: ${data.stock || 0}</div></div>
+                        <div><div class="cliente-nombre">${escapeHtml(data.nombre)}</div><div class="cliente-deuda">Stock disponible: ${data.stock || 0}</div>${codigo}</div>
                     </div>
                     <button type="button" class="btn btn-ghost" onclick="NuevaVenta.clearProducto()">x</button>
                 </div>
             `;
             selected.style.display = 'block';
             this.updateTotal();
-            document.getElementById('cantidad')?.focus();
+            const escanear = document.getElementById('escanear-codigo');
+            if (escanear && !escanear.closest('.hidden')) escanear.focus();
+            else document.getElementById('cantidad')?.focus();
         } catch (error) {
             Toast.error('Error al seleccionar producto');
         }
@@ -2267,6 +2581,8 @@ const NuevaVenta = {
         const input = document.getElementById('buscar-producto');
         input.style.display = 'block';
         input.value = '';
+        const escanear = document.getElementById('escanear-codigo');
+        if (escanear) escanear.value = '';
         document.getElementById('producto-seleccionado').style.display = 'none';
         document.getElementById('precio-unitario').value = '';
         this.updateTotal();
@@ -2404,6 +2720,9 @@ const ReporteCliente = {
                     <div class="reporte-titulo">📄 Reporte de Cliente</div>
                     <div style="font-weight:700;font-size:1.1rem;margin-top:0.25rem;">${escapeHtml(entidad.nombre)}</div>
                     ${entidad.telefono ? `<div class="reporte-meta">📱 ${escapeHtml(entidad.telefono)}</div>` : ''}
+                    ${entidad.cedula ? `<div class="reporte-meta">🪪 Cédula: ${escapeHtml(entidad.cedula)}</div>` : ''}
+                    ${entidad.ciudad ? `<div class="reporte-meta">📍 ${escapeHtml(entidad.ciudad)}</div>` : ''}
+                    ${entidad.direccion ? `<div class="reporte-meta">🏠 ${escapeHtml(entidad.direccion)}</div>` : ''}
                     <div class="reporte-meta">🏪 ${escapeHtml(tienda)}</div>
                 </div>
                 <div style="text-align:right;">
@@ -2861,13 +3180,27 @@ const WhatsApp = {
     },
     
     /**
+     * Sanitiza el mensaje antes de enviarlo por wa.me.
+     * Normaliza espacios no separables y whitespace raro que algunos móviles
+     * muestran como "?" y evita líneas en blanco iniciales.
+     */
+    sanitizarMensaje(message) {
+        return String(message)
+            .replace(/[\u00a0\u2007\u202f\u3000]/g, ' ')
+            .replace(/[\u200b\u200c\u200d\u2060\ufeff]/g, '')
+            .replace(/^\s+/, '')
+            .replace(/\s+$/, '')
+            .replace(/\n{3,}/g, '\n\n');
+    },
+
+    /**
      * Genera el link de WhatsApp
      */
     generateLink(phone, message) {
         const formattedPhone = this.formatPhone(phone);
         if (!formattedPhone) return null;
         
-        const encodedMessage = encodeURIComponent(message);
+        const encodedMessage = encodeURIComponent(this.sanitizarMensaje(message));
         return `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
     },
     
@@ -2917,9 +3250,9 @@ const WhatsApp = {
      */
     metodosPago(config) {
         const metodos = [];
-        if (config.qr_pago_nequi) metodos.push(`🏦 *Nequi:* ${config.qr_pago_nequi}`);
-        if (config.qr_pago_bancolombia) metodos.push(`🏦 *Bancolombia:* ${config.qr_pago_bancolombia}`);
-        if (config.qr_pago_davi) metodos.push(`🏦 *Daviplata:* ${config.qr_pago_davi}`);
+        if (config.qr_pago_nequi) metodos.push(`*Nequi:* ${config.qr_pago_nequi}`);
+        if (config.qr_pago_bancolombia) metodos.push(`*Bancolombia:* ${config.qr_pago_bancolombia}`);
+        if (config.qr_pago_davi) metodos.push(`*Daviplata:* ${config.qr_pago_davi}`);
         return metodos;
     },
 
@@ -2930,7 +3263,7 @@ const WhatsApp = {
         const config = await this.getConfig();
         const tienda = await this.getTienda();
         const metodos = this.metodosPago(config);
-        const bloqueMetodos = metodos.length ? `\n\n💳 Puedes realizar tu pago por:\n${metodos.join('\n')}` : '';
+        const bloqueMetodos = metodos.length ? `\n\nPuedes realizar tu pago por:\n${metodos.join('\n')}` : '';
         
         if (config.whatsapp_template_abono) {
             return this.replaceVariables(config.whatsapp_template_abono, {
@@ -2945,17 +3278,18 @@ const WhatsApp = {
             year: 'numeric'
         });
         
-        return `Hola ${nombre}, 👋\n\n✅ *ABONO REGISTRADO*\n\n📅 Fecha: ${fecha}\n💰 Abono: ${formatCurrency(monto)}\n📊 Saldo anterior: ${formatCurrency(saldoAnterior)}\n📊 Saldo actual: ${formatCurrency(saldoNuevo)}\n\nGracias por tu pago. 🙏${bloqueMetodos}\n\n_${tienda}_`;
+        return `Hola ${nombre},\n\n*ABONO REGISTRADO*\n\nFecha: ${fecha}\nAbono: ${formatCurrency(monto)}\nSaldo anterior: ${formatCurrency(saldoAnterior)}\nSaldo actual: ${formatCurrency(saldoNuevo)}\n\nGracias por tu pago.${bloqueMetodos}\n\n_${tienda}_`;
     },
     
     /**
      * Genera mensaje para comprobante de préstamo
      */
-    async mensajePrestamo(nombre, descripcion, monto, saldoNuevo) {
+    async mensajePrestamo(nombre, descripcion, monto, saldoNuevo, tipoOperacion) {
         const config = await this.getConfig();
         const tienda = await this.getTienda();
         const metodos = this.metodosPago(config);
-        const bloqueMetodos = metodos.length ? `\n\n💳 Puedes realizar tu pago por:\n${metodos.join('\n')}` : '';
+        const esCompra = tipoOperacion === 'COMPRA';
+        const bloqueMetodos = metodos.length ? `\n\nPuedes realizar tu pago por:\n${metodos.join('\n')}` : '';
 
         if (config.whatsapp_template_prestamo) {
             return this.replaceVariables(config.whatsapp_template_prestamo, {
@@ -2970,7 +3304,7 @@ const WhatsApp = {
             year: 'numeric'
         });
         
-        return `Hola ${nombre}, 👋\n\n📤 *PRÉSTAMO REGISTRADO*\n\n📅 Fecha: ${fecha}\n📦 Mercancía: ${descripcion || 'No especificada'}\n💰 Valor: ${formatCurrency(monto)}\n📊 Saldo actual: ${formatCurrency(saldoNuevo)}\n\nRecuerda que puedes hacer abonos parciales. 😉\n\n_${tienda}_`;
+        return `Hola ${nombre},\n\n*${esCompra ? 'COMPRA REGISTRADA' : 'PRÉSTAMO REGISTRADO'}*\n\nFecha: ${fecha}\nMercancía: ${descripcion || 'No especificada'}\nValor: ${formatCurrency(monto)}\nSaldo actual: ${formatCurrency(saldoNuevo)}\n\nRecuerda que puedes hacer abonos parciales.\n\n_${tienda}_`;
     },
     
     /**
@@ -2980,7 +3314,7 @@ const WhatsApp = {
         const config = await this.getConfig();
         const tienda = await this.getTienda();
         const metodos = this.metodosPago(config);
-        const bloqueMetodos = metodos.length ? `\n\n💳 Puedes realizar tu pago por:\n${metodos.join('\n')}` : '';
+        const bloqueMetodos = metodos.length ? `\n\nPuedes realizar tu pago por:\n${metodos.join('\n')}` : '';
 
         if (config.whatsapp_template_recordatorio) {
             return this.replaceVariables(config.whatsapp_template_recordatorio, {
@@ -2990,7 +3324,7 @@ const WhatsApp = {
             });
         }
 
-        return `Hola ${nombre}, 👋\n\nTe escribimos de *${tienda}* para recordarte que tienes un saldo pendiente de ${formatCurrency(saldo)}.\n\n${diasSinAbono ? `Han pasado ${diasSinAbono} días desde tu último abono.` : ''}\n\nSi deseas hacer un abono o tienes alguna pregunta, no dudes en respondernos. 🙏${bloqueMetodos}\n\n¡Gracias por tu preferencia!`;
+        return `Hola ${nombre},\n\nTe escribimos de *${tienda}* para recordarte que tienes un saldo pendiente de ${formatCurrency(saldo)}.\n\n${diasSinAbono ? `Han pasado ${diasSinAbono} días desde tu último abono.` : ''}\n\nSi deseas hacer un abono o tienes alguna pregunta, no dudes en respondernos.${bloqueMetodos}\n\n¡Gracias por tu preferencia!`;
     },
     
     /**
@@ -3013,7 +3347,7 @@ const WhatsApp = {
             year: 'numeric'
         });
         
-        return `Hola ${nombre}, 👋\n\n📤 *FACTURA REGISTRADA*\n\n📅 Fecha: ${fecha}\n📦 Concepto: ${descripcion || 'No especificado'}\n💰 Valor: ${formatCurrency(monto)}\n📊 Saldo actual: ${formatCurrency(saldoNuevo)}\n\n¡Gracias por el despacho! 🙏\n\n_${tienda}_`;
+        return `Hola ${nombre},\n\n*FACTURA REGISTRADA*\n\nFecha: ${fecha}\nConcepto: ${descripcion || 'No especificado'}\nValor: ${formatCurrency(monto)}\nSaldo actual: ${formatCurrency(saldoNuevo)}\n\n¡Gracias por el despacho!\n\n_${tienda}_`;
     },
 
     /**
@@ -3036,7 +3370,7 @@ const WhatsApp = {
             year: 'numeric'
         });
         
-        return `Hola ${nombre}, 👋\n\n✅ *PAGO REALIZADO*\n\n📅 Fecha: ${fecha}\n📦 Concepto: ${descripcion || 'No especificado'}\n💰 Monto: ${formatCurrency(monto)}\n📊 Saldo anterior: ${formatCurrency(saldoAnterior)}\n📊 Saldo actual: ${formatCurrency(saldoNuevo)}\n\n¡Gracias por tu atención! 🙏\n\n_${tienda}_`;
+        return `Hola ${nombre},\n\n*PAGO REALIZADO*\n\nFecha: ${fecha}\nConcepto: ${descripcion || 'No especificado'}\nMonto: ${formatCurrency(monto)}\nSaldo anterior: ${formatCurrency(saldoAnterior)}\nSaldo actual: ${formatCurrency(saldoNuevo)}\n\n¡Gracias por tu atención!\n\n_${tienda}_`;
     },
 
     /**
@@ -3073,13 +3407,13 @@ const WhatsApp = {
     /**
      * Envía comprobante por WhatsApp
      */
-    async enviarComprobante(tipo, clienteId, nombre, telefono, monto, descripcion, saldoAnterior, saldoNuevo) {
+    async enviarComprobante(tipo, clienteId, nombre, telefono, monto, descripcion, saldoAnterior, saldoNuevo, tipoOperacion) {
         let mensaje;
         
         if (tipo === 'abono') {
             mensaje = await this.mensajeAbono(nombre, monto, saldoAnterior, saldoNuevo);
         } else {
-            mensaje = await this.mensajePrestamo(nombre, descripcion, monto, saldoNuevo);
+            mensaje = await this.mensajePrestamo(nombre, descripcion, monto, saldoNuevo, tipoOperacion);
         }
         
         const enviado = this.open(telefono, mensaje);
@@ -3111,9 +3445,10 @@ const WhatsApp = {
      * Genera un comprobante visual como imagen PNG y lo descarga.
      * Parámetros: tipo ('abono'|'prestamo'), nombre, monto, saldoNuevo, descripcion
      */
-    async generarComprobante(tipo, nombre, monto, saldoNuevo, descripcion) {
+    async generarComprobante(tipo, nombre, monto, saldoNuevo, descripcion, tipoOperacion) {
         const config = await this.getConfig();
         const tienda = await this.getTienda();
+        const esCompra = tipoOperacion === 'COMPRA';
         const fecha = new Date().toLocaleDateString('es-CO', {
             weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
         });
@@ -3158,7 +3493,7 @@ const WhatsApp = {
         // Título
         ctx.font = 'bold 15px Arial';
         ctx.fillStyle = '#f8fafc';
-        ctx.fillText(isAbono ? 'ABONO REGISTRADO' : 'PRÉSTAMO REGISTRADO', W / 2, 100);
+        ctx.fillText(isAbono ? 'ABONO REGISTRADO' : (esCompra ? 'COMPRA REGISTRADA' : 'PRÉSTAMO REGISTRADO'), W / 2, 100);
 
         // Nombre y tienda
         ctx.font = '13px Arial';
@@ -3180,7 +3515,7 @@ const WhatsApp = {
         ctx.font = '11px Arial';
         ctx.fillStyle = '#64748b';
         ctx.textAlign = 'left';
-        ctx.fillText(isAbono ? 'Abono recibido' : 'Valor del préstamo', 40, 195);
+        ctx.fillText(isAbono ? 'Abono recibido' : (esCompra ? 'Valor de la compra' : 'Valor del préstamo'), 40, 195);
         ctx.textAlign = 'right';
         ctx.fillText('Saldo actual', W - 40, 195);
 
@@ -3589,14 +3924,116 @@ const ProveedorDetalle = {
 
 const NuevaFactura = {
     selectedProveedor: null,
+    items: [],
     
     async init(proveedorId = null) {
         this.setupForm();
         this.setupProveedorSearch();
         
+        const section = document.getElementById('factura-items-section');
+        if (section) {
+            try {
+                const { data } = await API.getConfiguracion();
+                if (data.facturas_sumar_stock) {
+                    section.style.display = 'block';
+                    this.setupProductoSearch();
+                }
+            } catch (error) {
+                console.error('Error al cargar configuración:', error);
+            }
+        }
+        
         if (proveedorId) {
             await this.selectProveedor(proveedorId);
         }
+    },
+    
+    setupProductoSearch() {
+        const searchInput = document.getElementById('buscar-producto-factura');
+        const resultsContainer = document.getElementById('resultados-productos-factura');
+        if (!searchInput || !resultsContainer) return;
+        
+        const debouncedSearch = debounce(async (query) => {
+            if (!query.trim()) {
+                resultsContainer.classList.remove('active');
+                return;
+            }
+            
+            try {
+                const { data } = await API.buscarProductos(query);
+                
+                if (data.length === 0) {
+                    resultsContainer.innerHTML = `<div class="search-result-empty">No se encontraron productos</div>`;
+                } else {
+                    resultsContainer.innerHTML = data
+                        .filter(p => !this.items.some(i => i.producto_id === p.id))
+                        .map(producto => `
+                            <div class="search-result-item" onclick="NuevaFactura.agregarItem('${producto.id}', '${escapeHtml(producto.nombre)}', ${producto.precio_compra || 0})">
+                                <div class="search-result-name">${escapeHtml(producto.nombre)}</div>
+                                <div class="search-result-info">Stock: ${producto.stock || 0} • Compra: ${formatCurrency(producto.precio_compra || 0)}</div>
+                            </div>
+                        `).join('');
+                }
+                
+                resultsContainer.classList.add('active');
+            } catch (error) {
+                resultsContainer.innerHTML = `<div class="search-result-empty">Error al buscar productos</div>`;
+            }
+        }, CONFIG.DEBOUNCE_DELAY);
+        
+        searchInput.addEventListener('input', (e) => debouncedSearch(e.target.value));
+    },
+    
+    agregarItem(productoId, nombre, precioCompra) {
+        const yaExiste = this.items.find(i => i.producto_id === productoId);
+        if (yaExiste) {
+            yaExiste.cantidad += 1;
+        } else {
+            this.items.push({ producto_id: productoId, nombre, precio_compra: precioCompra, cantidad: 1 });
+        }
+        this.renderItems();
+        document.getElementById('buscar-producto-factura').value = '';
+        document.getElementById('resultados-productos-factura').classList.remove('active');
+    },
+    
+    cambiarCantidadItem(productoId, delta) {
+        const item = this.items.find(i => i.producto_id === productoId);
+        if (!item) return;
+        item.cantidad += delta;
+        if (item.cantidad <= 0) {
+            this.items = this.items.filter(i => i.producto_id !== productoId);
+        }
+        this.renderItems();
+    },
+    
+    quitarItem(productoId) {
+        this.items = this.items.filter(i => i.producto_id !== productoId);
+        this.renderItems();
+    },
+    
+    renderItems() {
+        const container = document.getElementById('factura-items-list');
+        if (!container) return;
+        
+        if (this.items.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+        
+        container.innerHTML = this.items.map(item => `
+            <div style="display:flex; align-items:center; gap:0.5rem; padding:0.5rem; margin-bottom:0.5rem; background:var(--bg-main); border:1px solid var(--border-color); border-radius:var(--radius-md);">
+                <div style="flex:1; min-width:0;">
+                    <div style="font-weight:600; font-size:0.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(item.nombre)}</div>
+                    <div class="text-muted" style="font-size:0.8rem;">${formatCurrency(item.precio_compra || 0)} c/u</div>
+                </div>
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="NuevaFactura.cambiarCantidadItem('${item.producto_id}', -1)" style="padding:0.15rem 0.5rem;">-</button>
+                    <span style="min-width:1.5rem; text-align:center; font-weight:600;">${item.cantidad}</span>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="NuevaFactura.cambiarCantidadItem('${item.producto_id}', 1)" style="padding:0.15rem 0.5rem;">+</button>
+                    <button type="button" class="btn btn-sm" onclick="NuevaFactura.quitarItem('${item.producto_id}')" style="background:#ef4444; color:white; padding:0.15rem 0.5rem;" title="Quitar">✕</button>
+                </div>
+            </div>
+        `).join('');
     },
     
     setupForm() {
@@ -3626,18 +4063,29 @@ const NuevaFactura = {
                 
                 const saldoAnterior = this.selectedProveedor.saldo || 0;
                 
-                await API.crearMovimientoProveedor({
+                const payload = {
                     proveedor_id: this.selectedProveedor.id,
                     tipo: 'factura',
                     descripcion: descripcion || 'Factura de proveedor',
                     monto: monto,
                     fecha: fecha || null
-                });
+                };
+                
+                if (this.items && this.items.length > 0) {
+                    payload.items = this.items.map(i => ({
+                        producto_id: i.producto_id,
+                        cantidad: i.cantidad,
+                        precio_compra: i.precio_compra || 0
+                    }));
+                }
+                
+                await API.crearMovimientoProveedor(payload);
                 
                 const saldoNuevo = saldoAnterior + monto;
+                const conStock = this.items && this.items.length > 0;
                 
-                Toast.success('Factura registrada exitosamente');
-                this.mostrarConfirmacion(monto, descripcion || 'Factura de proveedor', saldoAnterior, saldoNuevo);
+                Toast.success(conStock ? 'Factura registrada y stock actualizado' : 'Factura registrada exitosamente');
+                this.mostrarConfirmacion(monto, descripcion || 'Factura de proveedor', saldoAnterior, saldoNuevo, conStock);
                 
             } catch (error) {
                 Toast.error(error.message || 'Error al registrar factura');
@@ -3648,7 +4096,7 @@ const NuevaFactura = {
         });
     },
     
-    mostrarConfirmacion(monto, descripcion, saldoAnterior, saldoNuevo) {
+    mostrarConfirmacion(monto, descripcion, saldoAnterior, saldoNuevo, conStock = false) {
         const container = document.getElementById('form-container');
         if (!container) return;
         
@@ -3658,6 +4106,7 @@ const NuevaFactura = {
                 <h3 style="margin-bottom: 0.5rem;">¡Factura Registrada!</h3>
                 <p class="text-muted" style="margin-bottom: 2rem;">
                     ${formatCurrency(monto)} agregados a la deuda con ${escapeHtml(this.selectedProveedor.nombre)}
+                    ${conStock ? '<br><span style="color: var(--success); font-weight: 600;">Stock actualizado con los productos incluidos</span>' : ''}
                 </p>
                 
                 <div style="background: var(--bg-main); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1.5rem;">
@@ -4603,7 +5052,7 @@ const GlobalSearch = {
 // ==================== COMPROBANTE MODAL ====================
 // Reutiliza el diseño Canvas del comprobante moderno existente
 
-async function _drawComprobante(canvas, tipo, nombre, monto, saldoAnterior, saldoNuevo, descripcion, fecha, hora, metodoPago, referencia) {
+async function _drawComprobante(canvas, tipo, nombre, monto, saldoAnterior, saldoNuevo, descripcion, fecha, hora, metodoPago, referencia, titulo) {
     const config = await WhatsApp.getConfig();
     const tienda = await WhatsApp.getTienda();
 
@@ -4645,7 +5094,7 @@ async function _drawComprobante(canvas, tipo, nombre, monto, saldoAnterior, sald
     // Titulo
     ctx.font = 'bold 14px Arial';
     ctx.fillStyle = '#f8fafc';
-    ctx.fillText(isAbono ? 'PAGO REGISTRADO' : 'PRÉSTAMO REGISTRADO', W / 2, 94);
+    ctx.fillText(titulo || (isAbono ? 'PAGO REGISTRADO' : 'PRÉSTAMO REGISTRADO'), W / 2, 94);
 
     // Nombre y tienda
     ctx.font = '12px Arial';
@@ -4891,7 +5340,8 @@ const ComprobanteModal = {
             data.fecha,
             data.hora,
             data.metodoPago,
-            data.referencia
+            data.referencia,
+            data.titulo
         );
 
         wrapper.appendChild(this.canvas);
@@ -4981,6 +5431,119 @@ const ComprobanteModal = {
         });
     }
 };
+
+/**
+ * Construye el HTML del recibo de venta (estilo factura de tienda).
+ * Función pura: no toca el DOM, solo devuelve el string HTML.
+ * Todo texto de usuario pasa por escapeHtml.
+ */
+async function generarHtmlReciboVenta(datos) {
+    const config = await WhatsApp.getConfig();
+    const esc = (t) => escapeHtml(t || '');
+    const fmt = (v) => new Intl.NumberFormat('es-CO', {
+        style: 'currency', currency: 'COP', maximumFractionDigits: 0
+    }).format(v || 0);
+
+    const tienda = esc(config.nombre_tienda);
+    const lineasEmpresa = [];
+    if (config.nit) lineasEmpresa.push('NIT: ' + esc(config.nit));
+    if (config.direccion) lineasEmpresa.push(esc(config.direccion));
+    if (config.telefono) lineasEmpresa.push('Tel: ' + esc(config.telefono));
+
+    const now = new Date();
+    const fecha = now.toLocaleDateString('es-CO', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+    });
+    const hora = now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+
+    const numRecibo = datos.reciboNumero != null ? 'R-' + String(datos.reciboNumero).padStart(4, '0') : '—';
+    const descripcion = esc(datos.descripcion);
+    const clienteTelefono = esc(datos.telefono);
+
+    return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Recibo de venta - ${tienda}</title>
+<style>
+    @page { margin: 12mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; font-family: 'Segoe UI', Arial, sans-serif; color: #111; }
+    .recibo { max-width: 380px; margin: 0 auto; }
+    .encabezado { text-align: center; }
+    .encabezado h1 { font-size: 20px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .empresa { font-size: 11px; color: #333; line-height: 1.5; }
+    .titulo { text-align: center; font-size: 15px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 7px 0; margin: 12px 0; }
+    .info { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 10px; }
+    .seccion-titulo { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #555; border-bottom: 1px solid #ddd; padding-bottom: 3px; margin-bottom: 6px; }
+    .cliente { font-size: 12px; margin-bottom: 12px; }
+    .fila { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; }
+    .fila.descripcion { border-bottom: 1px dashed #ccc; white-space: pre-wrap; }
+    .totales { margin-top: 8px; }
+    .total-destacado { display: flex; justify-content: space-between; font-size: 14px; font-weight: 700; border-top: 2px solid #000; margin-top: 6px; padding-top: 8px; }
+    .pie { margin-top: 18px; text-align: center; font-size: 11px; color: #333; }
+    .pie p { margin: 2px 0; }
+    .nota { font-size: 9px; color: #888; }
+</style>
+</head>
+<body>
+    <div class="recibo">
+        <div class="encabezado">
+            <h1>${tienda}</h1>
+            ${lineasEmpresa.length ? `<div class="empresa">${lineasEmpresa.join('<br>')}</div>` : ''}
+        </div>
+
+        <div class="titulo">Recibo de Venta</div>
+
+        <div class="info">
+            <span><strong>N°:</strong> ${numRecibo}</span>
+            <span>${fecha} — ${hora}</span>
+        </div>
+
+        <div class="seccion-titulo">Cliente</div>
+        <div class="cliente">
+            <div><strong>${esc(datos.nombre)}</strong></div>
+            ${clienteTelefono ? `<div>${clienteTelefono}</div>` : ''}
+        </div>
+
+        <div class="seccion-titulo">Detalle de la venta</div>
+        <div class="fila descripcion">${descripcion || 'Sin descripción'}</div>
+
+        <div class="totales">
+            <div class="fila">
+                <span>Saldo anterior</span>
+                <span>${fmt(datos.saldoAnterior)}</span>
+            </div>
+            <div class="fila">
+                <span>Valor de la venta</span>
+                <span>${fmt(datos.monto)}</span>
+            </div>
+            <div class="total-destacado">
+                <span>Saldo actual</span>
+                <span>${fmt(datos.saldoNuevo)}</span>
+            </div>
+        </div>
+
+        <div class="pie">
+            <p>¡Gracias por su compra!</p>
+            <p class="nota">Este documento no constituye factura con valor tributario.</p>
+        </div>
+    </div>
+    <script>window.onload = function () { window.print(); }<\/script>
+</body>
+</html>`;
+}
+
+/**
+ * Abre el recibo de venta en una ventana para imprimirla (o guardar como PDF).
+ */
+async function abrirReciboVenta(datos) {
+    const win = window.open('', '_blank', 'width=460,height=700');
+    if (!win) { alert('Permite las ventanas emergentes para imprimir el recibo'); return; }
+    win.document.write(await generarHtmlReciboVenta(datos));
+    win.document.close();
+    win.focus();
+}
 
 // Exportar módulos globales de UI
 window.API = API;

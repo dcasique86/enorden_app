@@ -1,3 +1,0 @@
-[     456ms] [ERROR] Error al cargar clientes: TypeError: Assignment to constant variable.
-    at Object.loadClientes (http://localhost:8000/static/js/app.js?v=2.15:1013:18)
-    at async Object.init (http://localhost:8000/static/js/app.js?v=2.15:985:9) @ http://localhost:8000/static/js/app.js?v=2.15:1040

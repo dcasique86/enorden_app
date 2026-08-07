@@ -98,6 +98,27 @@
             </div>
 
             <div class="form-group">
+                <label class="form-label">Columna de CÉDULA (opcional)</label>
+                <select id="col-cedula" class="form-input">
+                    <option value="">-- No importar --</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Columna de DIRECCIÓN (opcional)</label>
+                <select id="col-direccion" class="form-input">
+                    <option value="">-- No importar --</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Columna de CIUDAD (opcional)</label>
+                <select id="col-ciudad" class="form-input">
+                    <option value="">-- No importar --</option>
+                </select>
+            </div>
+
+            <div class="form-group">
                 <label class="form-label">Columna de DEUDA actual (opcional)</label>
                 <select id="col-deuda" class="form-input">
                     <option value="">-- No importar --</option>
@@ -343,7 +364,7 @@
         table.innerHTML = html;
 
         // Llenar selects con las columnas
-        const selects = ['col-nombre', 'col-telefono', 'col-deuda', 'col-prestamos', 'col-abonos'];
+        const selects = ['col-nombre', 'col-telefono', 'col-cedula', 'col-direccion', 'col-ciudad', 'col-deuda', 'col-prestamos', 'col-abonos'];
         selects.forEach(selectId => {
             const select = document.getElementById(selectId);
             const currentValue = select.value;
@@ -361,6 +382,15 @@
                     select.value = col;
                 }
                 if (selectId === 'col-telefono' && (colLower.includes('tel') || colLower.includes('cel') || colLower.includes('fono'))) {
+                    select.value = col;
+                }
+                if (selectId === 'col-cedula' && (colLower.includes('cedul') || colLower.includes('ci') || colLower.includes('documento') || colLower.includes('ident'))) {
+                    select.value = col;
+                }
+                if (selectId === 'col-direccion' && (colLower.includes('direcc') || colLower.includes('domicilio'))) {
+                    select.value = col;
+                }
+                if (selectId === 'col-ciudad' && (colLower.includes('ciudad') || colLower.includes('municip') || colLower.includes('poblac'))) {
                     select.value = col;
                 }
                 if (selectId === 'col-deuda' && (colLower.includes('deuda') || colLower.includes('saldo') || colLower.includes('balance'))) {
@@ -391,6 +421,9 @@
         const config = {
             col_nombre: colNombre,
             col_telefono: document.getElementById('col-telefono').value,
+            col_cedula: document.getElementById('col-cedula').value,
+            col_direccion: document.getElementById('col-direccion').value,
+            col_ciudad: document.getElementById('col-ciudad').value,
             col_deuda: document.getElementById('col-deuda').value,
             col_prestamos: document.getElementById('col-prestamos').value,
             col_abonos: document.getElementById('col-abonos').value,

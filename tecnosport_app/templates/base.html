@@ -16,10 +16,14 @@
         (function() {
             const theme = localStorage.getItem('theme') || 'dark';
             document.documentElement.setAttribute('data-theme', theme);
+            const sidebarCollapsed = localStorage.getItem('sidebar_collapsed') === '1' || window.innerWidth <= 960;
+            if (sidebarCollapsed) {
+                document.documentElement.classList.add('sidebar-collapsed');
+            }
         })();
     </script>
 
-    <link rel="stylesheet" href="/static/css/styles.css?v=2.9">
+    <link rel="stylesheet" href="/static/css/styles.css?v=2.14">
     {% block extra_head %}{% endblock %}
 </head>
 <body class="theme-transition" data-page="{{ page_id }}">
@@ -27,6 +31,9 @@
 
         <!-- Sidebar EN ORDEN -->
         <aside class="app-sidebar">
+            <button id="sidebar-toggle" class="sidebar-toggle" title="Colapsar menú" aria-label="Colapsar menú" aria-expanded="true">
+                <span class="sidebar-toggle-icon">◀</span>
+            </button>
             <a href="/" class="sidebar-brand" data-spa title="Volver al inicio" style="text-decoration:none; cursor:pointer;">
                 <div class="sidebar-logo">🏪</div>
                 <div class="sidebar-brand-text">
@@ -36,31 +43,31 @@
             </a>
 
             <nav class="sidebar-nav">
-                <a href="/" class="sidebar-link {% if page_id == 'dashboard' %}active{% endif %}" data-spa>
+                <a href="/" class="sidebar-link {% if page_id == 'dashboard' %}active{% endif %}" data-spa title="Panel Principal">
                     <span class="sidebar-icon">📊</span><span class="sidebar-label">Panel Principal</span>
                 </a>
-                <a href="/clientes" class="sidebar-link {% if page_id == 'clientes' %}active{% endif %}" data-spa>
+                <a href="/clientes" class="sidebar-link {% if page_id == 'clientes' %}active{% endif %}" data-spa title="Clientes">
                     <span class="sidebar-icon">👥</span><span class="sidebar-label">Clientes</span>
                 </a>
-                <a href="/inventario" class="sidebar-link {% if page_id == 'inventario' %}active{% endif %}" data-spa>
+                <a href="/inventario" class="sidebar-link {% if page_id == 'inventario' %}active{% endif %}" data-spa title="Inventario">
                     <span class="sidebar-icon">📦</span><span class="sidebar-label">Inventario</span>
                 </a>
-                <a href="/proveedores" class="sidebar-link {% if page_id == 'proveedores' %}active{% endif %}" data-spa>
+                <a href="/proveedores" class="sidebar-link {% if page_id == 'proveedores' %}active{% endif %}" data-spa title="Compras">
                     <span class="sidebar-icon">🏭</span><span class="sidebar-label">Compras</span>
                 </a>
-                <a href="/gastos" class="sidebar-link {% if page_id == 'gastos' %}active{% endif %}" data-spa>
+                <a href="/gastos" class="sidebar-link {% if page_id == 'gastos' %}active{% endif %}" data-spa title="Gastos">
                     <span class="sidebar-icon">💸</span><span class="sidebar-label">Gastos</span>
                 </a>
-                <a href="/recordatorios" class="sidebar-link {% if page_id == 'recordatorios' %}active{% endif %}" data-spa>
+                <a href="/recordatorios" class="sidebar-link {% if page_id == 'recordatorios' %}active{% endif %}" data-spa title="WhatsApp">
                     <span class="sidebar-icon">📱</span><span class="sidebar-label">WhatsApp</span>
                 </a>
             </nav>
 
             <div class="sidebar-footer">
-                <a href="/nuevo-prestamo" class="sidebar-cta" data-spa>
+                <a href="/nuevo-prestamo" class="sidebar-cta" data-spa title="Nueva Operación">
                     <span>➕</span><span class="sidebar-label">Nueva Operación</span>
                 </a>
-                <a href="/configuracion" class="sidebar-link {% if page_id == 'configuracion' %}active{% endif %}" data-spa>
+                <a href="/configuracion" class="sidebar-link {% if page_id == 'configuracion' %}active{% endif %}" data-spa title="Configuración">
                     <span class="sidebar-icon">⚙️</span><span class="sidebar-label">Configuración</span>
                 </a>
             </div>
@@ -193,7 +200,7 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
-    <script src="/static/js/app.js?v=2.27"></script></script>
+    <script src="/static/js/app.js?v=2.38"></script>
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>
