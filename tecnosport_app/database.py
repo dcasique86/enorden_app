@@ -37,6 +37,8 @@ class DatabaseManager:
         self.db_path = os.path.join(data_dir, "datos_tecnosport.db")
         self.excel_path = os.path.join(data_dir, "datos_tecnosport.xlsx")  # Mantenido para descargas/backwards-compat
         self.backup_dir = os.path.join(data_dir, "backups")
+        # ¿Existía la BD antes de inicializarla? (para registrar "creada" vs "existente" en startup.log)
+        self.bd_previa = os.path.exists(self.db_path)
         
         # Lock de concurrencia y caches en memoria para compatibilidad directa con repository.py
         self._lock = threading.Lock()

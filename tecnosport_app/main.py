@@ -2226,6 +2226,29 @@ async def api_verificar_datos():
 
 # ==================== INICIO DE LA APLICACIÓN ====================
 
+def _bloquear_instancia_duplicada():
+    """Impide ejecutar dos instancias de EnOrden sobre la misma instalación/datos.
+    El handle del mutex vive durante todo el proceso; Windows lo libera al salir.
+    Si el mutex no puede crearse (entorno sin soporte), la app arranca igual."""
+    try:
+        import ctypes
+        import hashlib
+        nombre = "Local\\EnOrden_" + hashlib.sha256(db.data_dir.encode("utf-8")).hexdigest()[:16]
+        kernel32 = ctypes.windll.kernel32
+        mutex = kernel32.CreateMutexW(None, False, nombre)
+        if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+            ctypes.windll.user32.MessageBoxW(
+                None,
+                "EnOrden ya está en ejecución en esta instalación.\n\n"
+                "Cierre la otra ventana antes de abrir una nueva.",
+                "EnOrden",
+                0x40 | 0x1000,  # MB_ICONINFORMATION | MB_SYSTEMMODAL
+            )
+            sys.exit(0)
+    except Exception:
+        pass  # nunca debe bloquear el arranque
+
+
 def _log_startup(mensaje: str):
     """Escribe un evento en {data_dir}/logs/startup.log (junto al .exe en modo congelado)."""
     try:
@@ -2262,7 +2285,7 @@ def run_server(puerto: int = None):
     """Ejecuta el servidor uvicorn en un puerto libre (8000 o superior)."""
     puerto = puerto if puerto is not None else _encontrar_puerto_libre()
     _log_startup(f"Puerto seleccionado: {puerto}")
-    _log_startup(f"Base de datos: {db.db_path} ({'existente' if os.path.exists(db.db_path) else 'será creada'})")
+    _log_startup(f"Base de datos: {db.db_path} ({'existente' if db.bd_previa else 'creada'})")
     _log_startup(f"Backups: {db.backup_dir}")
 
     print("\n" + "="*50)
@@ -2288,6 +2311,9 @@ def run_server(puerto: int = None):
         raise
 
 if __name__ == "__main__":
+    # Una sola instancia por instalación/datos (aviso y salida si ya hay otra)
+    _bloquear_instancia_duplicada()
+
     # Abrir navegador automáticamente
     # NOTA: Descomentado para lanzar automáticamente el navegador en modo standalone/ejecutable
     puerto = _encontrar_puerto_libre()

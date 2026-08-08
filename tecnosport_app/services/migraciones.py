@@ -46,6 +46,13 @@ MIGRATIONS = [
             "CREATE UNIQUE INDEX idx_productos_codigo_barras ON productos(codigo_barras) WHERE activo = 1 AND codigo_barras IS NOT NULL AND codigo_barras <> ''",
         ],
     },
+    {
+        "version": 6,
+        "description": "Índice de ventas por fecha (rendimiento en consultas de reportes)",
+        "sql": [
+            "CREATE INDEX IF NOT EXISTS idx_ventas_fecha ON ventas(fecha)",
+        ],
+    },
 ]
 
 

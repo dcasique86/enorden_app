@@ -5,6 +5,35 @@ Todas las versiones estables del sistema **EnOrden**.
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 Versionado semántico.
 
+## [Unreleased] - v1.0.1
+
+**Rama Git:** `v1.0.1` (solo correcciones de distribución; sin funcionalidades nuevas).
+
+### 🛠️ Correcciones
+
+- **`startup.log` distingue BD creada vs. existente**: el registro de arranque
+  ahora escribe `(creada)` en el primer inicio y `(existente)` cuando la base de
+  datos ya existía (antes siempre decía "existente" por cómo se inicializa la BD).
+- **Instancia única por instalación/datos**: al abrir una segunda copia de
+  EnOrden sobre la misma instalación, se muestra un aviso y la copia termina.
+  El bloqueo usa un mutex de Windows (nombre derivado del directorio de datos),
+  sin tocar lógica de negocio ni la base de datos.
+- **Migración v6**: `CREATE INDEX idx_ventas_fecha ON ventas(fecha)` (rendimiento
+  en consultas por fecha). Idempotente y prueba de actualización sobre BD real
+  v1.0.0 con datos (2 productos, 2 clientes, 1 venta, configuración) verificada.
+
+### 📦 Gate de actualización v1.0.0 → v1.0.1 (verificado)
+
+1. Instalación v1.0.0 sobre BD real → estado inicial intacto.
+2. Sustitución del exe por el build v1.0.1 → BD **no recreada**, `schema_version`
+   pasa de `1,2,3,4,5` a `1,2,3,4,5,6` con el índice creado.
+3. Datos y configuración intactos; migración ejecutada **una sola vez**
+   (no reaparece al reabrir la app ni tras reinicio del sistema).
+4. Segunda instancia bloqueada con aviso.
+5. Suite completa en verde en la rama: `python -m pytest tests -q` (109 passed).
+
+---
+
 ## [1.0.0] - 2026-08-07
 
 **Etiqueta Git:** `v1.0.0`

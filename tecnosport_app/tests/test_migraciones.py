@@ -58,7 +58,7 @@ class TestMigracionesAplicanEnBDVacia:
         ejecutar_migraciones(db_fresca)
         conn = db_fresca.get_connection()
         try:
-            assert _get_applied_versions(conn) == {1, 2, 3, 4, 5}
+            assert _get_applied_versions(conn) == {1, 2, 3, 4, 5, 6}
         finally:
             conn.close()
 
@@ -111,7 +111,7 @@ class TestVersionTracking:
     def test_ignora_migraciones_y_registradas(self, db_fresca):
         conn = db_fresca.get_connection()
         try:
-            _set_applied_versions(conn, {1, 2, 3, 4, 5})
+            _set_applied_versions(conn, {1, 2, 3, 4, 5, 6})
         finally:
             conn.close()
 
@@ -126,9 +126,25 @@ class TestVersionTracking:
             conn.close()
 
         aplicadas = ejecutar_migraciones(db_fresca)
-        assert len(aplicadas) == 2
+        assert len(aplicadas) == 3
         conn = db_fresca.get_connection()
         try:
-            assert _get_applied_versions(conn) == {1, 2, 3, 4, 5}
+            assert _get_applied_versions(conn) == {1, 2, 3, 4, 5, 6}
         finally:
             conn.close()
+
+    def test_v6_crea_indice_ventas_fecha(self, db_fresca):
+        ejecutar_migraciones(db_fresca)
+        conn = db_fresca.get_connection()
+        try:
+            assert "idx_ventas_fecha" in _indices(conn, "ventas")
+            sql = _sql_indice(conn, "idx_ventas_fecha")
+            assert "ventas" in sql and "fecha" in sql
+        finally:
+            conn.close()
+
+    def test_v6_no_volver_a_ejecutarse(self, db_fresca):
+        aplicadas = ejecutar_migraciones(db_fresca)
+        assert any("Índice de ventas por fecha" in a or "idx_ventas_fecha" in a for a in aplicadas)
+        aplicadas = ejecutar_migraciones(db_fresca)
+        assert aplicadas == []
