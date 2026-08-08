@@ -1,0 +1,51 @@
+============================================
+  EnOrden v1.0.0 — Instalación y avisos
+============================================
+
+CONTENIDO DE ESTA CARPETA
+-------------------------
+EnOrden-Setup-1.0.0.exe      -> Instalador (recomendado)
+EnOrden.exe                  -> Ejecutable directo (sin instalar)
+EnOrden-portable-1.0.0.zip   -> Versión portable (descomprimir y ejecutar)
+
+CÓMO INSTALAR (instalador)
+--------------------------
+1. Doble clic en EnOrden-Setup-1.0.0.exe.
+2. Dejar las opciones por defecto (destino: %LOCALAPPDATA%\EnOrden).
+3. Se crean accesos directos en el Escritorio y el Menú Inicio.
+4. Al finalizar, se ofrece "Iniciar EnOrden ahora".
+
+La base de datos, los backups y los logs se generan automáticamente en el
+primer inicio, junto al programa. Al desinstalar, sus datos SE CONSERVAN.
+
+VERSIÓN PORTABLE
+----------------
+Descomprima EnOrden-portable-1.0.0.zip en la carpeta que prefiera
+(por ejemplo D:\EnOrden o una memoria USB) y ejecute EnOrden.exe.
+La base de datos, los backups y los logs se crean en esa misma carpeta.
+Nada se copia fuera de ella: es 100% portable.
+
+AVISO DE SMARTSCREEN / WINDOWS DEFENDER
+----------------------------------------
+El programa no está firmado digitalmente (no se dispone de certificado).
+La primera vez Windows podrá mostrar "Windows protegió su equipo":
+  1. Hacer clic en "Más información".
+  2. Elegir "Ejecutar de todos modos".
+Si aparece la advertencia del antivirus, permitir la ejecución si confía
+en el origen de este archivo.
+
+PUERTO AUTOMÁTICO
+-----------------
+La aplicación ocupa el puerto 8000; si está ocupado buscará el siguiente
+puerto libre (8001, 8002, ...) y abrirá el navegador en ese puerto.
+El puerto elegido queda registrado en:
+   %LOCALAPPDATA%\EnOrden\logs\startup.log  (o junto al ejecutable portable)
+
+SOPORTE
+-------
+Si algo no funciona, revise el archivo logs\startup.log junto al programa
+y envíe su contenido a soporte.
+
+---
+EnOrden — Sistema de Cuentas por Cobrar
+Versión 1.0.0 (2026)

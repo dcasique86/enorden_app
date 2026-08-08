@@ -92,7 +92,10 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    ejecutar_migraciones(db)
+    _log_startup("Inicio de la aplicación")
+    aplicadas = ejecutar_migraciones(db)
+    if aplicadas:
+        _log_startup("Migraciones ejecutadas: " + "; ".join(aplicadas))
     convertidos = prestamo_service.verificar_vencimientos()
     if convertidos:
         print(f"📦 {convertidos} préstamo(s) vencido(s) convertido(s) a compra automáticamente")
@@ -2223,36 +2226,74 @@ async def api_verificar_datos():
 
 # ==================== INICIO DE LA APLICACIÓN ====================
 
-def open_browser():
+def _log_startup(mensaje: str):
+    """Escribe un evento en {data_dir}/logs/startup.log (junto al .exe en modo congelado)."""
+    try:
+        log_dir = os.path.join(db.data_dir, "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        with open(os.path.join(log_dir, "startup.log"), "a", encoding="utf-8") as f:
+            f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  {mensaje}\n")
+    except Exception:
+        pass  # el log nunca debe bloquear el arranque
+
+
+def _encontrar_puerto_libre(inicio: int = 8000, fin: int = 9000) -> int:
+    """Busca el primer puerto libre en el rango [inicio, fin] (fallback si 8000 está ocupado)."""
+    import socket
+    for puerto in range(inicio, fin + 1):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", puerto))
+                return puerto
+            except OSError:
+                continue
+    return inicio
+
+
+def open_browser(puerto: int):
     """Abre el navegador después de un pequeño delay"""
     time.sleep(1.5)
-    webbrowser.open("http://localhost:8000")
+    url = f"http://localhost:{puerto}"
+    _log_startup(f"URL abierta en el navegador: {url}")
+    webbrowser.open(url)
 
-def run_server():
-    """Ejecuta el servidor uvicorn"""
+
+def run_server(puerto: int = None):
+    """Ejecuta el servidor uvicorn en un puerto libre (8000 o superior)."""
+    puerto = puerto if puerto is not None else _encontrar_puerto_libre()
+    _log_startup(f"Puerto seleccionado: {puerto}")
+    _log_startup(f"Base de datos: {db.db_path} ({'existente' if os.path.exists(db.db_path) else 'será creada'})")
+    _log_startup(f"Backups: {db.backup_dir}")
+
     print("\n" + "="*50)
     print("  TECNOSPORT - Sistema de Cuentas por Cobrar")
     print("  Centro Comercial El Diamante 2")
     print("="*50)
     print(f"\n  Base de datos: {db.excel_path}")
     print(f"  Backups: {db.backup_dir}")
-    print("\n  Abriendo en navegador: http://localhost:8000")
+    print(f"\n  Abriendo en navegador: http://localhost:{puerto}")
     print("\n  Presiona Ctrl+C para detener el servidor")
     print("="*50 + "\n")
-    
-    uvicorn.run(
-        app,
-        host="127.0.0.1",
-        port=8000,
-        log_level="warning"
-    )
+
+    try:
+        uvicorn.run(
+            app,
+            host="127.0.0.1",
+            port=puerto,
+            log_level="warning"
+        )
+    except Exception as e:
+        import traceback
+        _log_startup(f"ERROR iniciando el servidor: {e}\n{traceback.format_exc()}")
+        raise
 
 if __name__ == "__main__":
     # Abrir navegador automáticamente
     # NOTA: Descomentado para lanzar automáticamente el navegador en modo standalone/ejecutable
-    browser_thread = threading.Thread(target=open_browser)
+    puerto = _encontrar_puerto_libre()
+    browser_thread = threading.Thread(target=open_browser, args=(puerto,))
     browser_thread.daemon = True
     browser_thread.start()
     
     # Ejecutar servidor
-    run_server()
+    run_server(puerto)

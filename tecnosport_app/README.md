@@ -86,6 +86,49 @@ Si el navegador no se abre automáticamente:
 - **`docs/DATABASE_SCHEMA.md`** — esquema SQLite, las 5 migraciones y el comportamiento de `codigo_barras`.
 - **`CHANGELOG.md`** (raíz del repo) — notas de versión y política de congelamiento de módulos.
 - **Módulo congelado**: inventario y códigos de barras (desde `v1.0.0` solo recibe correcciones de errores).
+- **`instaladores/verify_checklist.md`** — checklist de instalación y prueba antes de distribuir.
+
+---
+
+## 🖥️ Compilación e instalación (Windows)
+
+### Requisitos
+
+```bash
+pip install pyinstaller
+```
+
+### Compilar el .exe
+
+```bash
+cd tecnosport_app
+python -m PyInstaller --clean --noconfirm EnOrden.spec
+# Resultado: dist/EnOrden.exe (un único archivo, sin consola)
+```
+
+### Generar instalador (.exe) — Inno Setup 6
+
+1. Instalar [Inno Setup 6](https://jrsoftware.org/isinfo.php) (requiere ISCC.exe en compilación; el usuario final no lo necesita).
+2. Editar `tecnosport_app/instaladores/enorden_setup.iss` (versión, rutas).
+3. Compilar:
+
+```bat
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" tecnosport_app\instaladores\enorden_setup.iss
+```
+
+Resultado: `C:\EnOrden\Release\EnOrden-Setup-1.0.0.exe`.
+
+### Versión portable
+
+```powershell
+Compress-Archive -Path dist\EnOrden.exe, assets\en_orden.ico -DestinationPath C:\EnOrden\Release\EnOrden-portable-1.0.0.zip
+```
+
+### Comportamiento del .exe compilado
+
+- Instala/descomprime y ejecuta: la **BD se genera sola** (vacía, migraciones v1–v5) junto al ejecutable.
+- Puerto 8000 automático con fallback (8001, 8002, …) si está ocupado.
+- Eventos de arranque en `logs/startup.log` (junto al exe).
 
 ---
 

@@ -9,6 +9,26 @@ Versionado semántico.
 
 **Etiqueta Git:** `v1.0.0`
 
+### 🚀 Distribución compilada (Windows)
+
+- **Ejecutable único** `EnOrden.exe` (PyInstaller 6.21, one-file, sin consola).
+- **Instalador** `EnOrden-Setup-1.0.0.exe` (Inno Setup 6.7.3):
+  - Destino por defecto: `%LOCALAPPDATA%\EnOrden` (sin permisos de admin).
+  - Accesos directos en Escritorio y Menú Inicio con icono provisional.
+  - Opción "Iniciar EnOrden al finalizar la instalación".
+  - Desinstalador que **conserva** la base de datos, backups y logs.
+- **Versión portable** `EnOrden-portable-1.0.0.zip`: se descomprime donde se
+  quiera (incluso USB) y la BD/backups/logs se crean en la misma carpeta.
+- **Puerto dinámico**: la app intenta el 8000 y, si está ocupado, busca el
+  siguiente libre (8001, 8002, …); el navegador se abre en el puerto elegido.
+- **`logs/startup.log`**: registra inicio, puerto seleccionado, estado de la
+  base de datos, migraciones aplicadas, URL abierta y errores de arranque.
+- **BD autogenerada**: no se distribuye ninguna base de datos; en el primer
+  inicio se crea vacía (schema v1–v5) junto al ejecutable.
+- Herramientas y recursos: `tools/generar_icono.py`, `assets/en_orden.ico`,
+  `instaladores/enorden_setup.iss`, `instaladores/LEEME.txt` y
+  `instaladores/verify_checklist.md`.
+
 ### Establecimiento de la versión
 
 Este release congela el **módulo de inventario y códigos de barras**: a partir
